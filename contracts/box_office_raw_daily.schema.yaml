@@ -1,0 +1,38 @@
+dataset: box_office_raw_daily
+version: 1.0.0
+owner: domain-box-office-raw
+description: Classifica box office giornaliera top 10 Italia estratta da Cineguru
+primary_key:
+  - date
+  - rank
+  - title
+columns:
+  - name: date
+    type: date
+    nullable: false
+  - name: rank
+    type: int
+    nullable: false
+    constraints:
+      min: 1
+      max: 10
+  - name: title
+    type: string
+    nullable: false
+  - name: gross_eur
+    type: int
+    nullable: false
+    constraints:
+      min: 0
+  - name: admissions
+    type: int
+    nullable: true
+  - name: cinemas
+    type: int
+    nullable: true
+  - name: avg_per_cinema_eur
+    type: int
+    nullable: true
+  - name: total_gross_eur
+    type: int
+    nullable: true

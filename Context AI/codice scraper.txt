@@ -1,0 +1,355 @@
+"""
+cineguru_scraper.py
+====================
+Scraper per i dati di box office giornaliero da Cineguru (screenweek.it).
+
+Dipendenze:
+    pip install playwright beautifulsoup4 pandas
+    playwright install chromium
+
+Struttura output (DataFrame / CSV):
+    date        | rank | title           | gross_eur | admissions | cinemas | avg_per_cinema | total_gross_eur
+    2026-02-22  | 1    | Cime Tempestose | 394033    | 53098      | 566     | 696            | 7892107
+
+Uso:
+    # Giorno singolo
+    python cineguru_scraper.py --date 2026-02-22
+
+    # Range di date (backfill)
+    python cineguru_scraper.py --start 2025-01-01 --end 2026-02-25
+
+    # Ultimi N giorni
+    python cineguru_scraper.py --last-days 90
+"""
+
+import re
+import time
+import argparse
+import logging
+from datetime import date, timedelta, datetime
+from pathlib import Path
+
+import pandas as pd
+from bs4 import BeautifulSoup
+from playwright.sync_api import sync_playwright, TimeoutError as PlaywrightTimeout
+
+# ---------------------------------------------------------------------------
+# Config
+# ---------------------------------------------------------------------------
+
+BASE_URL = "https://cineguru.screenweek.it"
+ARCHIVE_URL = f"{BASE_URL}/box-office-2/box-office/"  # pagina archivio con lista articoli
+OUTPUT_DIR = Path("./data/raw")
+LOG_LEVEL = logging.INFO
+
+logging.basicConfig(
+    level=LOG_LEVEL,
+    format="%(asctime)s [%(levelname)s] %(message)s",
+    datefmt="%H:%M:%S",
+)
+log = logging.getLogger("cineguru")
+
+
+# ---------------------------------------------------------------------------
+# Regex patterns per il parsing del corpo articolo
+# ---------------------------------------------------------------------------
+
+# Riga tipica: "1 – Cime Tempestose – 394.033 euro (53.098 spettatori) – 566 cinema/696 euro – tot. 7.892.107"
+# Varianti supportate: separatori con – o -, numeri con punto o virgola come separatore migliaia
+
+RE_ENTRY = re.compile(
+    r"""
+    ^\s*
+    (?P<rank>\d{1,2})             # posizione in classifica
+    \s*[–\-]\s*
+    (?P<title>[^–\-]+?)           # titolo film
+    \s*[–\-]\s*
+    (?P<gross>[\d.,]+)\s*euro     # incasso giornaliero
+    \s*\((?P<admissions>[\d.,]+)\s*spettatori\)  # spettatori
+    \s*[–\-]\s*
+    (?P<cinemas>[\d.,]+)\s*cinema # numero cinema/schermi
+    .*?
+    tot\.\s*(?P<total>[\d.,]+)    # incasso totale cumulativo
+    """,
+    re.VERBOSE | re.IGNORECASE,
+)
+
+# Pattern alternativo più permissivo (alcune righe omettono la media per cinema)
+RE_ENTRY_LOOSE = re.compile(
+    r"""
+    ^\s*(?P<rank>\d{1,2})\s*[–\-]\s*
+    (?P<title>[^–\-0-9][^–\-]*?)\s*[–\-]\s*
+    (?P<gross>[\d.,]+)\s*euro
+    .*?
+    (?:(?P<admissions>[\d.,]+)\s*spettatori)?
+    .*?
+    (?:(?P<cinemas>[\d.,]+)\s*cinema)?
+    .*?
+    tot\.\s*(?P<total>[\d.,]+)
+    """,
+    re.VERBOSE | re.IGNORECASE,
+)
+
+
+def _clean_number(s: str | None) -> int | None:
+    """Converte '394.033' o '394,033' in 394033."""
+    if s is None:
+        return None
+    return int(re.sub(r"[.,]", "", s.strip()))
+
+
+def _parse_avg(line: str) -> int | None:
+    """Estrae la media per cinema dalla riga (campo opzionale)."""
+    m = re.search(r"cinema\s*/\s*([\d.,]+)\s*euro", line, re.IGNORECASE)
+    return _clean_number(m.group(1)) if m else None
+
+
+# ---------------------------------------------------------------------------
+# Browser / fetch
+# ---------------------------------------------------------------------------
+
+def _fetch_html(url: str, page) -> str:
+    """Carica una pagina con Playwright e restituisce l'HTML."""
+    try:
+        page.goto(url, wait_until="domcontentloaded", timeout=30_000)
+        # Aspetta che il contenuto principale sia presente
+        page.wait_for_selector("article", timeout=15_000)
+        return page.content()
+    except PlaywrightTimeout:
+        log.warning(f"Timeout su {url}")
+        return ""
+    except Exception as e:
+        log.error(f"Errore su {url}: {e}")
+        return ""
+
+
+# ---------------------------------------------------------------------------
+# Parsing articolo
+# ---------------------------------------------------------------------------
+
+def parse_article(html: str, article_date: date) -> list[dict]:
+    """
+    Dato l'HTML di un articolo Cineguru, estrae le righe di classifica.
+    Restituisce una lista di dict (una per film).
+    """
+    soup = BeautifulSoup(html, "html.parser")
+
+    # Il testo del box office è nel corpo dell'articolo
+    content = soup.find("div", class_=re.compile(r"entry-content|post-content|article-content", re.I))
+    if not content:
+        content = soup.find("article")
+    if not content:
+        log.warning("Struttura articolo non trovata")
+        return []
+
+    records = []
+    for line in content.get_text(separator="\n").splitlines():
+        line = line.strip()
+        if not line or not re.match(r"^\d{1,2}\s*[–\-]", line):
+            continue
+
+        m = RE_ENTRY.match(line) or RE_ENTRY_LOOSE.match(line)
+        if not m:
+            continue
+
+        g = m.groupdict()
+        records.append({
+            "date": article_date.isoformat(),
+            "rank": int(g["rank"]),
+            "title": g["title"].strip(),
+            "gross_eur": _clean_number(g.get("gross")),
+            "admissions": _clean_number(g.get("admissions")),
+            "cinemas": _clean_number(g.get("cinemas")),
+            "avg_per_cinema_eur": _parse_avg(line),
+            "total_gross_eur": _clean_number(g.get("total")),
+        })
+
+    log.info(f"  → {len(records)} film estratti per {article_date}")
+    return records
+
+
+# ---------------------------------------------------------------------------
+# Navigazione archivio
+# ---------------------------------------------------------------------------
+
+def _extract_article_links(html: str, target_date: date) -> list[tuple[str, date]]:
+    """
+    Dalla pagina archivio, estrae i link agli articoli di box office.
+    Filtra per data target (o restituisce tutti se target_date è None).
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    results = []
+
+    for a in soup.find_all("a", href=True):
+        href = a["href"]
+        # Le URL degli articoli hanno pattern /YYYY/MM/...box-office...
+        m = re.search(r"/(\d{4})/(\d{2})/(.+box.office.+)/", href, re.I)
+        if not m:
+            continue
+        year, month, slug = int(m.group(1)), int(m.group(2)), m.group(3)
+
+        # Estrai il giorno dallo slug (es. "lunedi-17-febbraio" o "17-february")
+        day_match = re.search(r"(\d{1,2})[^\d]", slug)
+        if not day_match:
+            continue
+        try:
+            # Mesi italiani → numero
+            MESI = {
+                "gennaio": 1, "febbraio": 2, "marzo": 3, "aprile": 4,
+                "maggio": 5, "giugno": 6, "luglio": 7, "agosto": 8,
+                "settembre": 9, "ottobre": 10, "novembre": 11, "dicembre": 12,
+            }
+            month_name = re.search(
+                r"(gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)",
+                slug
+            )
+            if month_name:
+                month = MESI[month_name.group(1)]
+
+            article_date = date(year, month, int(day_match.group(1)))
+        except ValueError:
+            continue
+
+        if target_date is None or article_date == target_date:
+            results.append((href, article_date))
+
+    return list({href: (href, d) for href, d in results}.values())  # dedup
+
+
+def get_articles_for_date_range(
+    page, start: date, end: date, delay: float = 2.0
+) -> list[tuple[str, date]]:
+    """
+    Naviga l'archivio Cineguru per raccogliere tutti i link
+    agli articoli nel range [start, end].
+    """
+    all_links = []
+    archive_page = 1
+
+    while True:
+        url = ARCHIVE_URL if archive_page == 1 else f"{ARCHIVE_URL}page/{archive_page}/"
+        log.info(f"Scansione archivio pagina {archive_page}: {url}")
+        html = _fetch_html(url, page)
+        if not html:
+            break
+
+        links = _extract_article_links(html, target_date=None)
+        if not links:
+            break
+
+        # Filtra per range di date
+        filtered = [(href, d) for href, d in links if start <= d <= end]
+        all_links.extend(filtered)
+
+        # Se tutti i link trovati in questa pagina sono più vecchi di start, fermati
+        dates_on_page = [d for _, d in links]
+        if dates_on_page and max(dates_on_page) < start:
+            break
+
+        archive_page += 1
+        time.sleep(delay)
+
+    log.info(f"Trovati {len(all_links)} articoli nel range {start} → {end}")
+    return all_links
+
+
+# ---------------------------------------------------------------------------
+# Pipeline principale
+# ---------------------------------------------------------------------------
+
+def scrape(
+    start: date,
+    end: date,
+    output_path: Path = None,
+    delay: float = 2.5,
+) -> pd.DataFrame:
+    """
+    Scarica e struttura i dati di box office per il range di date specificato.
+
+    Args:
+        start:       Data di inizio (inclusa)
+        end:         Data di fine (inclusa)
+        output_path: Percorso CSV di output (opzionale)
+        delay:       Secondi di attesa tra una richiesta e l'altra
+
+    Returns:
+        DataFrame con tutti i record estratti
+    """
+    OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    all_records = []
+
+    with sync_playwright() as p:
+        browser = p.chromium.launch(headless=True)
+        context = browser.new_context(
+            user_agent=(
+                "Mozilla/5.0 (Windows NT 10.0; Win64; x64) "
+                "AppleWebKit/537.36 (KHTML, like Gecko) "
+                "Chrome/121.0.0.0 Safari/537.36"
+            ),
+            locale="it-IT",
+        )
+        page = context.new_page()
+
+        # Step 1: raccoglie i link dall'archivio
+        article_links = get_articles_for_date_range(page, start, end, delay=delay)
+
+        # Step 2: scarica e parsa ogni articolo
+        for href, article_date in article_links:
+            log.info(f"Fetching {article_date}: {href}")
+            html = _fetch_html(href, page)
+            if html:
+                records = parse_article(html, article_date)
+                all_records.extend(records)
+            time.sleep(delay)
+
+        browser.close()
+
+    if not all_records:
+        log.warning("Nessun record estratto.")
+        return pd.DataFrame()
+
+    df = pd.DataFrame(all_records).sort_values(["date", "rank"]).reset_index(drop=True)
+
+    # Salva CSV
+    if output_path is None:
+        output_path = OUTPUT_DIR / f"cineguru_{start}_{end}.csv"
+    df.to_csv(output_path, index=False)
+    log.info(f"Salvati {len(df)} record in {output_path}")
+
+    return df
+
+
+# ---------------------------------------------------------------------------
+# CLI
+# ---------------------------------------------------------------------------
+
+def _parse_args():
+    parser = argparse.ArgumentParser(description="Cineguru box office scraper")
+    group = parser.add_mutually_exclusive_group(required=True)
+    group.add_argument("--date", type=date.fromisoformat, help="Giorno singolo (YYYY-MM-DD)")
+    group.add_argument("--start", type=date.fromisoformat, help="Data inizio range")
+    group.add_argument("--last-days", type=int, help="Ultimi N giorni da oggi")
+
+    parser.add_argument("--end", type=date.fromisoformat, default=date.today(), help="Data fine range (default: oggi)")
+    parser.add_argument("--output", type=Path, default=None, help="Percorso CSV output")
+    parser.add_argument("--delay", type=float, default=2.5, help="Delay tra richieste in secondi (default: 2.5)")
+    return parser.parse_args()
+
+
+if __name__ == "__main__":
+    args = _parse_args()
+
+    if args.date:
+        start = end = args.date
+    elif args.last_days:
+        end = date.today()
+        start = end - timedelta(days=args.last_days)
+    else:
+        start, end = args.start, args.end
+
+    log.info(f"Avvio scraping: {start} → {end}")
+    df = scrape(start=start, end=end, output_path=args.output, delay=args.delay)
+
+    if not df.empty:
+        print(f"\n✅ Completato: {len(df)} record, {df['date'].nunique()} giorni")
+        print(df.head(10).to_string(index=False))

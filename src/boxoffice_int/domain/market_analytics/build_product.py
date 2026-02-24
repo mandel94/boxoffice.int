@@ -1,0 +1,47 @@
+from pathlib import Path
+
+import pandas as pd
+
+from ...common import DATA_CURATED, DATA_PRODUCTS, normalize_title
+
+
+def build_market_analytics(input_path: Path, metadata_path: Path | None = None) -> tuple[Path, Path]:
+    box_office = pd.read_csv(input_path)
+    box_office["title_norm"] = box_office["title"].astype(str).map(normalize_title)
+    box_office["date"] = pd.to_datetime(box_office["date"], errors="coerce")
+
+    if metadata_path is None:
+        metadata_path = DATA_CURATED / "film_metadata" / "film_metadata.csv"
+
+    if metadata_path.exists():
+        metadata = pd.read_csv(metadata_path)
+        dataset = box_office.merge(metadata, on="title_norm", how="left")
+    else:
+        dataset = box_office.copy()
+
+    dataset = dataset.sort_values(["date", "rank"]).reset_index(drop=True)
+
+    kpis = (
+        dataset.groupby("date", as_index=False)
+        .agg(
+            gross_total_eur=("gross_eur", "sum"),
+            admissions_total=("admissions", "sum"),
+            cinemas_total=("cinemas", "sum"),
+            unique_titles=("title_norm", "nunique"),
+        )
+        .sort_values("date")
+    )
+
+    kpis["avg_ticket_price_eur"] = (kpis["gross_total_eur"] / kpis["admissions_total"]).round(2)
+    kpis["avg_gross_per_cinema_eur"] = (kpis["gross_total_eur"] / kpis["cinemas_total"]).round(2)
+
+    output_dir = DATA_PRODUCTS / "market_analytics"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    fact_path = output_dir / "fact_daily_boxoffice.parquet"
+    kpi_path = output_dir / "kpi_daily_market.parquet"
+
+    dataset.to_parquet(fact_path, index=False)
+    kpis.to_parquet(kpi_path, index=False)
+
+    return fact_path, kpi_path

@@ -1,0 +1,29 @@
+Perfetto, il perimetro è chiaro. Dati giornalieri, solo Italia, ultimi 1-2 anni. Questo semplifica molto la scelta delle fonti e la pipeline.
+
+---
+
+**Analisi delle fonti per il tuo caso specifico**
+
+Con granularità giornaliera il riferimento quasi obbligato è **Cinetel**. È l'unica fonte italiana che pubblica dati con questa frequenza, aggiornati ogni lunedì per la settimana precedente (il giornaliero vero è riservato agli abbonati). Vale la pena verificare cosa è accessibile pubblicamente prima di considerare lo scraping.
+
+**The Numbers** e **Box Office Mojo** per l'Italia hanno solo dati settimanali/cumulativi per film, quindi non ci aiutano sulla granularità giornaliera.
+
+**TMDB** (themoviedb.org) ha API gratuite ottime per arricchire i metadati dei film (genere, cast, poster, ecc.) — utile come secondo dominio nel tuo mesh.
+
+---
+
+**Proposta di architettura data mesh**
+
+Penserei a tre domain data product:
+
+**1. `box_office_raw` domain** — scraping da Cinetel, dati grezzi giornalieri/settimanali per film (titolo, incasso, presenze, schermi). Owner: pipeline di ingestione.
+
+**2. `film_metadata` domain** — dati da TMDB API (genere, regista, durata, paese di produzione, rating). Owner: enrichment layer. Join key: titolo + anno.
+
+**3. `market_analytics` domain** — aggregazioni, KPI, trend stagionali. Questo è il dominio consumabile dal data product finale.
+
+---
+
+**Passo successivo pratico**
+
+Ti propongo di fare subito una ricognizione tecnica su Cinetel: andiamo a vedere insieme la struttura del sito, cosa è pubblicamente disponibile e se è fattibile uno scraping pulito. Vuoi che proceda con questa analisi esplorativa?

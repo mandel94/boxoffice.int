@@ -1,0 +1,41 @@
+Ottima idea, Screenweek/Cineguru è una fonte molto usata dagli addetti ai lavori. Vado a esplorarlo subito.Ottimo, ho già un quadro abbastanza chiaro. Vado a ispezionare la struttura HTML di una pagina di box office giornaliero per valutare la fattibilità tecnica dello scraping.Ho abbastanza elementi per fare una valutazione tecnica completa. Ecco il quadro:
+
+---
+
+**Valutazione di fattibilità: Cineguru Screenweek**
+
+**✅ Fonte eccellente per i nostri obiettivi**
+
+Cineguru è probabilmente la migliore fonte pubblica italiana per dati giornalieri. Pubblica una classifica ogni singolo giorno (lunedì-domenica) con top 10 film, e per ogni film espone: incasso giornaliero in euro, numero di spettatori, numero di cinema/schermi, media per cinema, incasso totale cumulativo. È esattamente quello che ti serve.
+
+**⚠️ Sfida tecnica principale: il 403**
+
+Il sito risponde con un **403 Forbidden** alle richieste HTTP standard — significa che ha una protezione anti-bot attiva (probabilmente Cloudflare o un semplice controllo sullo User-Agent). Non è scrapabile con un semplice `requests` di Python.
+
+**Soluzioni tecniche percorribili:**
+
+La prima opzione è usare **Playwright o Selenium** (browser headless che simula un browser reale) — quasi certamente sufficiente a bypassare la protezione, dato che il sito non sembra avere CAPTCHA interattivi. La seconda opzione è usare librerie come **cloudscraper** che gestiscono automaticamente il challenge Cloudflare senza aprire un browser completo.
+
+**📐 Struttura dei dati: semi-strutturata ma parsabile**
+
+Il dato critico è che i dati **non sono in una tabella HTML**, ma sono nel corpo dell'articolo in formato testo come questo pattern ricorrente:
+
+> `1 – Titolo film – 394.033 euro (53.098 spettatori) – 566 cinema/696 euro – tot. X.XXX.XXX`
+
+Questo significa che il parser dovrà usare **regex** per estrarre i campi dal testo dell'articolo, non un semplice selettore CSS su una tabella. È fattibile ma richiede un po' di robustezza per gestire variazioni nella formattazione.
+
+**🗂️ Struttura URL: prevedibile e navigabile**
+
+Le URL seguono il pattern `cineguru.screenweek.it/YYYY/MM/[slug]-49XXX/` dove lo slug contiene sempre la data in chiaro (es. *"il-box-office-di-giovedì-19-febbraio"*). È quindi possibile sia fare crawling dall'archivio che costruire un backfill sistematico degli ultimi 2 anni navigando la categoria `/box-office-2/`.
+
+**Valutazione complessiva**
+
+| Aspetto | Giudizio |
+|---|---|
+| Ricchezza dei dati | ⭐⭐⭐⭐⭐ — giornaliero, spettatori, schermi, media |
+| Accessibilità tecnica | ⭐⭐⭐ — superabile con browser headless |
+| Struttura HTML | ⭐⭐ — testo semi-libero, serve regex |
+| Storico disponibile | ⭐⭐⭐⭐⭐ — archivio anni indietro |
+| Stabilità del formato | ⭐⭐⭐⭐ — pattern abbastanza costante |
+
+**Verdetto: fattibile.** Il costo tecnico è medio — non banale come un sito con API, ma ben sotto la soglia di impraticabilità. Ti propongo di procedere con uno scraper in Python basato su Playwright + regex. Vuoi che lo costruiamo?

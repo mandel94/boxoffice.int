@@ -1,0 +1,28 @@
+dataset: market_analytics_kpi_daily
+version: 1.0.0
+owner: domain-market-analytics
+description: KPI giornalieri del mercato box office Italia
+primary_key:
+  - date
+columns:
+  - name: date
+    type: date
+    nullable: false
+  - name: gross_total_eur
+    type: int
+    nullable: false
+  - name: admissions_total
+    type: int
+    nullable: true
+  - name: cinemas_total
+    type: int
+    nullable: true
+  - name: unique_titles
+    type: int
+    nullable: false
+  - name: avg_ticket_price_eur
+    type: float
+    nullable: true
+  - name: avg_gross_per_cinema_eur
+    type: float
+    nullable: true
