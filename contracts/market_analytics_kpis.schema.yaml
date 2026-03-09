@@ -1,28 +1,95 @@
-dataset: market_analytics_kpi_daily
-version: 1.0.0
-owner: domain-market-analytics
-description: KPI giornalieri del mercato box office Italia
-primary_key:
-  - date
-columns:
-  - name: date
-    type: date
-    nullable: false
-  - name: gross_total_eur
-    type: int
-    nullable: false
-  - name: admissions_total
-    type: int
-    nullable: true
-  - name: cinemas_total
-    type: int
-    nullable: true
-  - name: unique_titles
-    type: int
-    nullable: false
-  - name: avg_ticket_price_eur
-    type: float
-    nullable: true
-  - name: avg_gross_per_cinema_eur
-    type: float
-    nullable: true
+apiVersion: boxoffice.int/v1
+kind: DataContract
+
+metadata:
+  id: market-analytics-kpi-daily
+  version: "1.0.0"
+  domain: market-analytics
+  owner: team-data-engineering
+  status: active
+  created: "2026-01-01"
+  updated: "2026-03-09"
+
+info:
+  title: Market Analytics KPI Daily
+  description: >
+    KPI giornalieri aggregati del mercato box office Italia.
+    Prodotto derivato (curated layer) calcolato a partire da box-office-raw-daily
+    e arricchito opzionalmente con film-metadata.
+
+schema:
+  dataset: market_analytics_kpi_daily
+  format: parquet
+  primary_key:
+    - date
+  fields:
+    - name: date
+      type: date
+      nullable: false
+      description: Data di riferimento dei KPI
+
+    - name: gross_total_eur
+      type: integer
+      nullable: false
+      description: Incasso totale giornaliero aggregato sul top-10 in euro
+      constraints:
+        minimum: 0
+
+    - name: admissions_total
+      type: integer
+      nullable: true
+      description: Numero totale di spettatori del giorno
+
+    - name: cinemas_total
+      type: integer
+      nullable: true
+      description: Numero totale di cinema in programmazione nel giorno
+
+    - name: unique_titles
+      type: integer
+      nullable: false
+      description: Numero di titoli unici in classifica nel giorno
+      constraints:
+        minimum: 1
+
+    - name: avg_ticket_price_eur
+      type: float
+      nullable: true
+      description: Prezzo medio del biglietto (gross_total_eur / admissions_total)
+
+    - name: avg_gross_per_cinema_eur
+      type: float
+      nullable: true
+      description: Incasso medio per cinema (gross_total_eur / cinemas_total)
+
+quality:
+  freshness:
+    max_delay_hours: 72
+    description: >
+      Il prodotto deve essere ricalcolato entro 72h da una nuova ingestione raw.
+  completeness:
+    min_rows_per_date: 1
+    required_fields:
+      - date
+      - gross_total_eur
+      - unique_titles
+
+inputs:
+  - contract: box-office-raw-daily
+    domain: box-office-raw
+    version: ">=1.0.0"
+    fields_used:
+      - date
+      - rank
+      - gross_eur
+      - admissions
+      - cinemas
+      - title
+  - contract: film-metadata
+    domain: film-metadata
+    version: ">=1.0.0"
+    optional: true
+    fields_used:
+      - title_norm
+
+consumers: []

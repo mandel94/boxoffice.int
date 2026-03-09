@@ -10,6 +10,7 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeout
 from playwright.sync_api import sync_playwright
 
 from ...common import DATA_RAW
+from ...contracts import ContractViolationError, load_contract, validate
 
 BASE_URL = "https://cineguru.screenweek.it"
 ARCHIVE_URL = f"{BASE_URL}/box-office-2/box-office/"
@@ -193,6 +194,12 @@ def scrape_cineguru(start: date, end: date, delay: float = 2.0, output_path: Pat
 
     dataframe = dataframe[(dataframe["rank"] >= 1) & (dataframe["rank"] <= 10)]
     dataframe = dataframe[dataframe["gross_eur"].fillna(0) >= 0]
+
+    contract = load_contract("box-office-raw-daily")
+    try:
+        validate(dataframe, contract)
+    except ContractViolationError:
+        LOG.exception("Output contract violation — dataset written anyway for inspection")
 
     output_dir = DATA_RAW / "box_office_raw"
     output_dir.mkdir(parents=True, exist_ok=True)

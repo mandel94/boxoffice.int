@@ -1,0 +1,91 @@
+apiVersion: boxoffice.int/v1
+kind: DataContract
+
+metadata:
+  id: film-metadata
+  version: "1.0.0"
+  domain: film-metadata
+  owner: team-data-engineering
+  status: active
+  created: "2026-01-01"
+  updated: "2026-03-09"
+
+info:
+  title: Film Metadata
+  description: >
+    Metadati arricchiti sui film tramite l'API TMDB.
+    Collega il titolo raw normalizzato a informazioni strutturate del film
+    (lingua originale, data di uscita, popolarità, valutazione).
+  source: https://www.themoviedb.org/
+
+schema:
+  dataset: film_metadata
+  format: csv
+  primary_key:
+    - title_norm
+  fields:
+    - name: title_norm
+      type: string
+      nullable: false
+      description: >
+        Titolo normalizzato (lowercase, spazi singoli) usato come chiave di join
+        con il dominio box-office-raw.
+
+    - name: tmdb_id
+      type: integer
+      nullable: true
+      description: Identificativo univoco del film su TMDB
+
+    - name: original_title
+      type: string
+      nullable: true
+      description: Titolo originale del film
+
+    - name: release_date
+      type: date
+      nullable: true
+      description: Data di uscita del film (YYYY-MM-DD)
+
+    - name: original_language
+      type: string
+      nullable: true
+      description: Codice lingua ISO 639-1 del film (es. "en", "it", "fr")
+
+    - name: popularity
+      type: float
+      nullable: true
+      description: Punteggio di popolarità TMDB
+      constraints:
+        minimum: 0
+
+    - name: vote_average
+      type: float
+      nullable: true
+      description: Voto medio TMDB su scala 0–10
+      constraints:
+        minimum: 0
+        maximum: 10
+
+    - name: vote_count
+      type: integer
+      nullable: true
+      description: Numero totale di voti su TMDB
+      constraints:
+        minimum: 0
+
+quality:
+  completeness:
+    required_fields:
+      - title_norm
+
+inputs:
+  - contract: box-office-raw-daily
+    domain: box-office-raw
+    version: ">=1.0.0"
+    fields_used:
+      - title
+
+consumers:
+  - domain: market-analytics
+    dataset: market_analytics_kpi_daily
+    contact: team-data-engineering

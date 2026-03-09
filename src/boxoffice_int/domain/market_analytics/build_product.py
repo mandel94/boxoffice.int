@@ -1,14 +1,21 @@
+import logging
 from pathlib import Path
 
 import pandas as pd
 
 from ...common import DATA_CURATED, DATA_PRODUCTS, normalize_title
+from ...contracts import load_contract, validate
+
+LOG = logging.getLogger(__name__)
 
 
 def build_market_analytics(input_path: Path, metadata_path: Path | None = None) -> tuple[Path, Path]:
     box_office = pd.read_csv(input_path)
     box_office["title_norm"] = box_office["title"].astype(str).map(normalize_title)
     box_office["date"] = pd.to_datetime(box_office["date"], errors="coerce")
+
+    raw_contract = load_contract("box-office-raw-daily")
+    validate(box_office, raw_contract)
 
     if metadata_path is None:
         metadata_path = DATA_CURATED / "film_metadata" / "film_metadata.csv"
@@ -42,6 +49,10 @@ def build_market_analytics(input_path: Path, metadata_path: Path | None = None) 
     kpi_path = output_dir / "kpi_daily_market.parquet"
 
     dataset.to_parquet(fact_path, index=False)
+
+    kpi_contract = load_contract("market-analytics-kpi-daily")
+    validate(kpis, kpi_contract)
+
     kpis.to_parquet(kpi_path, index=False)
 
     return fact_path, kpi_path

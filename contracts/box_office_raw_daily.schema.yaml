@@ -1,38 +1,88 @@
-dataset: box_office_raw_daily
-version: 1.0.0
-owner: domain-box-office-raw
-description: Classifica box office giornaliera top 10 Italia estratta da Cineguru
-primary_key:
-  - date
-  - rank
-  - title
-columns:
-  - name: date
-    type: date
-    nullable: false
-  - name: rank
-    type: int
-    nullable: false
-    constraints:
-      min: 1
-      max: 10
-  - name: title
-    type: string
-    nullable: false
-  - name: gross_eur
-    type: int
-    nullable: false
-    constraints:
-      min: 0
-  - name: admissions
-    type: int
-    nullable: true
-  - name: cinemas
-    type: int
-    nullable: true
-  - name: avg_per_cinema_eur
-    type: int
-    nullable: true
-  - name: total_gross_eur
-    type: int
-    nullable: true
+apiVersion: boxoffice.int/v1
+kind: DataContract
+
+metadata:
+  id: box-office-raw-daily
+  version: "1.0.0"
+  domain: box-office-raw
+  owner: team-data-engineering
+  status: active
+  created: "2026-01-01"
+  updated: "2026-03-09"
+
+info:
+  title: Box Office Raw Daily
+  description: >
+    Classifica box office giornaliera top 10 Italia estratta da Cineguru.
+    Prodotto grezzo (raw layer) — nessuna trasformazione semantica applicata.
+  source: https://cineguru.screenweek.it/box-office-2/box-office/
+
+schema:
+  dataset: box_office_raw_daily
+  format: csv
+  primary_key:
+    - date
+    - rank
+  fields:
+    - name: date
+      type: date
+      nullable: false
+      description: Data della rilevazione (YYYY-MM-DD)
+
+    - name: rank
+      type: integer
+      nullable: false
+      description: Posizione in classifica
+      constraints:
+        minimum: 1
+        maximum: 10
+
+    - name: title
+      type: string
+      nullable: false
+      description: Titolo del film così come appare sulla fonte
+
+    - name: gross_eur
+      type: integer
+      nullable: false
+      description: Incasso giornaliero in euro
+      constraints:
+        minimum: 0
+
+    - name: admissions
+      type: integer
+      nullable: true
+      description: Numero di spettatori
+
+    - name: cinemas
+      type: integer
+      nullable: true
+      description: Numero di cinema in programmazione
+
+    - name: avg_per_cinema_eur
+      type: integer
+      nullable: true
+      description: Incasso medio per cinema in euro
+
+    - name: total_gross_eur
+      type: integer
+      nullable: true
+      description: Incasso cumulato totale del film in euro
+
+quality:
+  freshness:
+    max_delay_hours: 48
+    description: I dati devono essere disponibili entro 48h dalla data di rilevazione
+  completeness:
+    min_rows_per_date: 1
+    max_rows_per_date: 10
+    required_fields:
+      - date
+      - rank
+      - title
+      - gross_eur
+
+consumers:
+  - domain: market-analytics
+    dataset: market_analytics_kpi_daily
+    contact: team-data-engineering
