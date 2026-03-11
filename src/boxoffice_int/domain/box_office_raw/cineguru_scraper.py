@@ -10,7 +10,7 @@ from playwright.sync_api import TimeoutError as PlaywrightTimeout
 from playwright.sync_api import sync_playwright
 
 from ...common import DATA_RAW
-from ...contracts import ContractViolationError, load_contract, validate
+from ...contracts import ContractViolationError, cast_to_contract, load_contract, validate
 
 BASE_URL = "https://cineguru.screenweek.it"
 ARCHIVE_URL = f"{BASE_URL}/box-office-2/box-office/"
@@ -196,6 +196,7 @@ def scrape_cineguru(start: date, end: date, delay: float = 2.0, output_path: Pat
     dataframe = dataframe[dataframe["gross_eur"].fillna(0) >= 0]
 
     contract = load_contract("box-office-raw-daily")
+    dataframe = cast_to_contract(dataframe, contract)
     try:
         validate(dataframe, contract)
     except ContractViolationError:

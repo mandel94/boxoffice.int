@@ -40,8 +40,12 @@ def build_market_analytics(input_path: Path, metadata_path: Path | None = None) 
         .sort_values("date")
     )
 
-    kpis["avg_ticket_price_eur"] = (kpis["gross_total_eur"] / kpis["admissions_total"]).round(2)
-    kpis["avg_gross_per_cinema_eur"] = (kpis["gross_total_eur"] / kpis["cinemas_total"]).round(2)
+    kpis["avg_ticket_price_eur"] = (
+        kpis["gross_total_eur"] / kpis["admissions_total"].replace(0, pd.NA)
+    ).round(2)
+    kpis["avg_gross_per_cinema_eur"] = (
+        kpis["gross_total_eur"] / kpis["cinemas_total"].replace(0, pd.NA)
+    ).round(2)
 
     output_dir = DATA_PRODUCTS / "market_analytics"
     output_dir.mkdir(parents=True, exist_ok=True)
