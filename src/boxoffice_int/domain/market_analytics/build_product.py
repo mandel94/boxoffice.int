@@ -4,7 +4,7 @@ from pathlib import Path
 import pandas as pd
 
 from ...common import DATA_CURATED, DATA_PRODUCTS, normalize_title
-from ...contracts import load_contract, validate
+from ...contracts import load_contract, validate, cast_to_contract
 
 LOG = logging.getLogger(__name__)
 
@@ -15,6 +15,7 @@ def build_market_analytics(input_path: Path, metadata_path: Path | None = None) 
     box_office["date"] = pd.to_datetime(box_office["date"], errors="coerce")
 
     raw_contract = load_contract("box-office-raw-daily")
+    box_office = cast_to_contract(box_office, raw_contract)
     validate(box_office, raw_contract)
 
     if metadata_path is None:
@@ -51,6 +52,7 @@ def build_market_analytics(input_path: Path, metadata_path: Path | None = None) 
     dataset.to_parquet(fact_path, index=False)
 
     kpi_contract = load_contract("market-analytics-kpi-daily")
+    kpis = cast_to_contract(kpis, kpi_contract)
     validate(kpis, kpi_contract)
 
     kpis.to_parquet(kpi_path, index=False)

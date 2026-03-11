@@ -26,12 +26,10 @@ schema:
   fields:
     - name: date
       type: date
-      nullable: false
       description: Data della rilevazione (YYYY-MM-DD)
 
     - name: rank
       type: integer
-      nullable: false
       description: Posizione in classifica
       constraints:
         minimum: 1
@@ -39,12 +37,10 @@ schema:
 
     - name: title
       type: string
-      nullable: false
       description: Titolo del film così come appare sulla fonte
 
     - name: gross_eur
       type: integer
-      nullable: false
       description: Incasso giornaliero in euro
       constraints:
         minimum: 0

@@ -37,12 +37,12 @@ schema:
 
     - name: admissions_total
       type: integer
-      nullable: true
+      nullable: false
       description: Numero totale di spettatori del giorno
 
     - name: cinemas_total
       type: integer
-      nullable: true
+      nullable: false
       description: Numero totale di cinema in programmazione nel giorno
 
     - name: unique_titles
@@ -54,12 +54,12 @@ schema:
 
     - name: avg_ticket_price_eur
       type: float
-      nullable: true
+      nullable: false
       description: Prezzo medio del biglietto (gross_total_eur / admissions_total)
 
     - name: avg_gross_per_cinema_eur
       type: float
-      nullable: true
+      nullable: false
       description: Incasso medio per cinema (gross_total_eur / cinemas_total)
 
 quality:
@@ -71,6 +71,8 @@ quality:
     min_rows_per_date: 1
     required_fields:
       - date
+      - admissions_total
+      - cinemas_total
       - gross_total_eur
       - unique_titles
 
