@@ -1,0 +1,14 @@
+Metadata-Version: 2.4
+Name: boxoffice-int
+Version: 0.1.0
+Summary: Data product pipeline — box office Italia (Data Mesh)
+Requires-Python: >=3.11
+Requires-Dist: beautifulsoup4==4.12.3
+Requires-Dist: pandas==2.2.3
+Requires-Dist: pandera>=0.18
+Requires-Dist: playwright==1.50.0
+Requires-Dist: pyarrow==19.0.1
+Requires-Dist: pyyaml>=6.0
+Requires-Dist: requests==2.32.3
+Provides-Extra: dev
+Requires-Dist: pytest>=8.0; extra == "dev"

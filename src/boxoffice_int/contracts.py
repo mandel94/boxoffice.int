@@ -28,7 +28,7 @@ import yaml
 LOG = logging.getLogger(__name__)
 
 # Resolved at import time so it works regardless of the working directory.
-CONTRACTS_DIR = Path(__file__).resolve().parents[3] / "contracts"
+CONTRACTS_DIR = Path(__file__).resolve().parents[2] / "contracts"
 
 # Maps contract field types to the pandas dtype used for coercion.
 # Shared by cast_to_contract and build_pandera_schema.
@@ -59,13 +59,13 @@ def load_contract(contract_id: str) -> dict[str, Any]:
         If no matching contract is found in :data:`CONTRACTS_DIR`.
     """
     for path in sorted(CONTRACTS_DIR.glob("*.yaml")):
-        with path.open(encoding="latin-1") as fh:
+        with path.open(encoding="utf-8") as fh:
             contract = yaml.safe_load(fh)
         if not isinstance(contract, dict):
             continue
         if contract.get("metadata", {}).get("id") == contract_id:
             return contract
-        if path.stem == contract_id:
+        if path.stem == contract_id or path.name.split(".")[0] == contract_id:
             return contract
     raise FileNotFoundError(
         f"Contract '{contract_id}' not found in {CONTRACTS_DIR}. "

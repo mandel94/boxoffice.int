@@ -54,12 +54,12 @@ schema:
 
     - name: avg_ticket_price_eur
       type: float
-      nullable: false
+      nullable: true
       description: Prezzo medio del biglietto (gross_total_eur / admissions_total)
 
     - name: avg_gross_per_cinema_eur
       type: float
-      nullable: false
+      nullable: true
       description: Incasso medio per cinema (gross_total_eur / cinemas_total)
 
 quality:

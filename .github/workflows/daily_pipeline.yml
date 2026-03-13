@@ -1,0 +1,56 @@
+name: Daily Pipeline
+
+on:
+  schedule:
+    - cron: "0 8 * * *"   # ogni giorno alle 08:00 UTC
+  workflow_dispatch:        # eseguibile manualmente dalla UI GitHub
+
+jobs:
+  run-pipeline:
+    runs-on: ubuntu-latest
+    env:
+      TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -e ".[dev]"
+
+      - name: Install Playwright browsers
+        run: playwright install chromium --with-deps
+
+      - name: Run tests
+        run: pytest tests/ -v
+
+      - name: Ingest — Cineguru
+        run: |
+          TODAY=$(date -u +%Y-%m-%d)
+          boxoffice-int ingest --start "$TODAY" --end "$TODAY"
+
+      - name: Enrich — TMDB metadata
+        run: |
+          TODAY=$(date -u +%Y-%m-%d)
+          RAW=$(ls data/raw/box_office_raw/cineguru_"$TODAY"_"$TODAY".csv 2>/dev/null || ls data/raw/box_office_raw/*.csv | sort | tail -1)
+          boxoffice-int enrich --input "$RAW"
+
+      - name: Build — market analytics
+        run: |
+          RAW=$(ls data/raw/box_office_raw/*.csv | sort | tail -1)
+          boxoffice-int build \
+            --input "$RAW" \
+            --metadata data/curated/film_metadata/film_metadata.csv
+
+      - name: Upload data products
+        uses: actions/upload-artifact@v4
+        with:
+          name: data-products-${{ github.run_id }}
+          path: data/products/
+          retention-days: 90

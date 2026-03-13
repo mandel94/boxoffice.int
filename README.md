@@ -8,6 +8,102 @@ Produrre un dataset consumabile da BI/analytics con:
 
 - classifica giornaliera per film
 - KPI giornalieri di mercato
+
+---
+
+## Prerequisiti
+
+| Requisito | Versione minima |
+|-----------|----------------|
+| Python | 3.11 |
+| Playwright (Chromium) | installato via `playwright install chromium` |
+| `TMDB_API_KEY` | variabile d'ambiente obbligatoria per `enrich` |
+
+## Installazione
+
+```bash
+pip install -e ".[dev]"
+playwright install chromium
+```
+
+## Variabili d'ambiente
+
+```bash
+# Obbligatoria per il comando enrich
+export TMDB_API_KEY=<la_tua_chiave>
+```
+
+Su Windows con PowerShell:
+
+```powershell
+$env:TMDB_API_KEY = "<la_tua_chiave>"
+```
+
+---
+
+## Utilizzo CLI
+
+### 1. Ingestione raw da Cineguru
+
+```bash
+boxoffice-int ingest --start 2026-01-01 --end 2026-01-31
+```
+
+Output: `data/raw/box_office_raw/cineguru_2026-01-01_2026-01-31.csv`
+
+### 2. Arricchimento metadati TMDB
+
+```bash
+boxoffice-int enrich --input data/raw/box_office_raw/cineguru_2026-01-01_2026-01-31.csv
+```
+
+Output: `data/curated/film_metadata/film_metadata.csv`
+
+### 3. Build data product analytics
+
+```bash
+boxoffice-int build \
+  --input data/raw/box_office_raw/cineguru_2026-01-01_2026-01-31.csv \
+  --metadata data/curated/film_metadata/film_metadata.csv
+```
+
+Output:
+- `data/products/market_analytics/fact_daily_boxoffice.parquet`
+- `data/products/market_analytics/kpi_daily_market.parquet`
+
+> `--metadata` è opzionale: se omesso il build procede senza join.
+
+---
+
+## Test
+
+```bash
+pytest tests/ -v
+```
+
+---
+
+## Layer dati
+
+```
+data/
+  raw/          # output ingestion (CSV)
+  curated/      # output enrichment (CSV)
+  products/     # output build (Parquet, consumo BI)
+```
+
+## Struttura domini
+
+```
+src/boxoffice_int/
+  domain/
+    box_office_raw/     # scraping Cineguru
+    film_metadata/      # arricchimento TMDB
+    market_analytics/   # KPI aggregati
+  contracts.py          # validazione contratti Pandera
+  pipeline.py           # CLI entry-point
+contracts/              # YAML data contracts
+```
 - arricchimento metadati film (TMDB)
 
 ## Domini Data Mesh
@@ -38,65 +134,7 @@ docs/
   architecture.md
 ```
 
-## Setup rapido
+## CI / orchestrazione
 
-1. Crea ambiente virtuale:
-   - Windows PowerShell: `python -m venv .venv`
-   - Attivazione: `.\.venv\Scripts\Activate.ps1`
-2. Installa dipendenze: `pip install -r requirements.txt`
-3. Installa browser Playwright: `playwright install chromium`
-
-## Esecuzione pipeline
-
-### 1) Ingestione box office raw
-
-```bash
-python -m src.boxoffice_int.pipeline ingest --start 2025-01-01 --end 2025-01-31
-```
-
-Output:
-
-- `data/raw/box_office_raw/cineguru_YYYY-MM-DD_YYYY-MM-DD.csv`
-
-### 2) Enrichment metadata (opzionale, ma consigliato)
-
-Imposta variabile ambiente:
-
-```bash
-setx TMDB_API_KEY "<YOUR_KEY>"
-```
-
-Poi esegui:
-
-```bash
-python -m src.boxoffice_int.pipeline enrich --input data/raw/box_office_raw/cineguru_2025-01-01_2025-01-31.csv
-```
-
-Output:
-
-- `data/curated/film_metadata/film_metadata.csv`
-
-### 3) Build data product analytics
-
-```bash
-python -m src.boxoffice_int.pipeline build --input data/raw/box_office_raw/cineguru_2025-01-01_2025-01-31.csv
-```
-
-Output:
-
-- `data/products/market_analytics/fact_daily_boxoffice.parquet`
-- `data/products/market_analytics/kpi_daily_market.parquet`
-
-## Best practice incluse
-
-- separazione per domini (ownership chiara)
-- data contract versionabile (`contracts/`)
-- idempotenza (output deterministico su stesso input)
-- typing + validazioni di schema minime
-- layer raw/curated/product
-
-## Prossimi step raccomandati
-
-- orchestrazione schedulata (Airflow/Prefect/GitHub Actions)
-- test automatici qualità dati (Great Expectations)
-- pubblicazione su warehouse (BigQuery/Snowflake/Postgres)
+Il workflow `.github/workflows/daily_pipeline.yml` esegue ogni giorno alle 08:00 UTC:
+`test → ingest → enrich → build`. Configura il secret `TMDB_API_KEY` nel repository GitHub.
