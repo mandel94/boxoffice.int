@@ -10,6 +10,21 @@ LOG = logging.getLogger(__name__)
 
 
 def build_market_analytics(input_path: Path, metadata_path: Path | None = None) -> tuple[Path, Path]:
+    """
+    Build the market analytics data product from raw box-office data.
+
+    Joins raw box-office with optional film metadata, computes daily KPIs
+    (total gross, admissions, avg ticket price, avg gross per cinema), and
+    validates both outputs against their contracts before writing.
+
+    Args:
+        input_path: Path to the raw box-office CSV (from ``ingest``).
+        metadata_path: Optional path to the film metadata CSV. Defaults to
+            ``DATA_CURATED/film_metadata/film_metadata.csv`` if it exists.
+
+    Returns:
+        Tuple of (fact_path, kpi_path) for the written Parquet files.
+    """
     box_office = pd.read_csv(input_path)
     box_office["title_norm"] = box_office["title"].astype(str).map(normalize_title)
     box_office["date"] = pd.to_datetime(box_office["date"], errors="coerce")

@@ -1,20 +1,65 @@
 import argparse
-from datetime import date
+import logging
+from datetime import date, timedelta
 from pathlib import Path
 
 from .domain.box_office_raw.cineguru_scraper import scrape_cineguru
 from .domain.film_metadata.tmdb_client import enrich_titles_with_tmdb
 from .domain.market_analytics.build_product import build_market_analytics
 
+# ---------------------------------------------------------------------------
+# Date-range presets
+# ---------------------------------------------------------------------------
+
+
+def _presets(today: date) -> dict[str, tuple[date, date]]:
+    """Return named date-range presets relative to *today*."""
+    yesterday = today - timedelta(days=1)
+    # ISO week: Monday=0 … Sunday=6
+    week_start = today - timedelta(days=today.weekday())
+    last_week_start = week_start - timedelta(weeks=1)
+    last_week_end = week_start - timedelta(days=1)
+    month_start = today.replace(day=1)
+    last_month_end = month_start - timedelta(days=1)
+    last_month_start = last_month_end.replace(day=1)
+    return {
+        "yesterday":    (yesterday, yesterday),
+        "this-week":    (week_start, today),
+        "last-week":    (last_week_start, last_week_end),
+        "this-month":   (month_start, today),
+        "last-month":   (last_month_start, last_month_end),
+    }
+
+
+def _resolve_range(args: argparse.Namespace, today: date) -> tuple[date, date]:
+    """Return (start, end) from either a preset flag or explicit --start/--end."""
+    presets = _presets(today)
+    for name, (s, e) in presets.items():
+        if getattr(args, name.replace("-", "_"), False):
+            return s, e
+    return args.start, args.end
+
 
 def _build_parser() -> argparse.ArgumentParser:
+    """Build the CLI argument parser with subcommands: ingest, enrich, build."""
     parser = argparse.ArgumentParser(description="boxoffice.int data product pipeline")
     sub = parser.add_subparsers(dest="command", required=True)
 
     ingest = sub.add_parser("ingest", help="Ingestione raw da Cineguru")
-    ingest.add_argument("--start", type=date.fromisoformat, required=True, help="Data inizio YYYY-MM-DD")
-    ingest.add_argument("--end", type=date.fromisoformat, required=True, help="Data fine YYYY-MM-DD")
-    ingest.add_argument("--delay", type=float, default=2.0, help="Delay richieste")
+
+    # Explicit range (both optional when a preset is used)
+    ingest.add_argument("--start", type=date.fromisoformat, default=None, help="Data inizio YYYY-MM-DD")
+    ingest.add_argument("--end",   type=date.fromisoformat, default=None, help="Data fine YYYY-MM-DD")
+
+    # Preset shortcuts (mutually exclusive)
+    presets_group = ingest.add_mutually_exclusive_group()
+    presets_group.add_argument("--yesterday",   action="store_true", help="Ieri")
+    presets_group.add_argument("--this-week",   action="store_true", help="Da lunedì a oggi")
+    presets_group.add_argument("--last-week",   action="store_true", help="Settimana scorsa (lun–dom)")
+    presets_group.add_argument("--this-month",  action="store_true", help="Dal 1° del mese a oggi")
+    presets_group.add_argument("--last-month",  action="store_true", help="Mese scorso completo")
+
+    ingest.add_argument("--delay", type=float, default=2.0, help="Delay richieste (secondi)")
 
     enrich = sub.add_parser("enrich", help="Arricchimento metadati TMDB")
     enrich.add_argument("--input", type=Path, required=True, help="CSV raw box office")
@@ -27,11 +72,23 @@ def _build_parser() -> argparse.ArgumentParser:
 
 
 def main() -> None:
+    """Entry point for the ``boxoffice-pipeline`` CLI command."""
+    logging.basicConfig(
+        level=logging.INFO,
+        format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+        datefmt="%H:%M:%S",
+    )
     parser = _build_parser()
     args = parser.parse_args()
 
     if args.command == "ingest":
-        path = scrape_cineguru(start=args.start, end=args.end, delay=args.delay)
+        preset_flags = ("yesterday", "this_week", "last_week", "this_month", "last_month")
+        using_preset = any(getattr(args, f, False) for f in preset_flags)
+        if not using_preset and (args.start is None or args.end is None):
+            parser.error("ingest: specifica --start/--end oppure uno shortcut (--yesterday, --this-week, …)")
+        start, end = _resolve_range(args, date.today())
+        logging.getLogger(__name__).info("Range selezionato: %s → %s", start, end)
+        path = scrape_cineguru(start=start, end=end, delay=args.delay)
         print(f"Raw dataset creato: {path}")
         return
 

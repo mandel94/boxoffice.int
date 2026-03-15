@@ -15,6 +15,7 @@ TMDB_BASE = "https://api.themoviedb.org/3"
 
 
 def _get_api_key() -> str:
+    """Read TMDB_API_KEY from the environment, raising RuntimeError if absent."""
     api_key = os.getenv("TMDB_API_KEY", "").strip()
     if not api_key:
         raise RuntimeError("Variabile ambiente TMDB_API_KEY non impostata")
@@ -27,6 +28,13 @@ _BACKOFF = 2.0  # seconds, doubled each attempt
 
 
 def _search_movie(title: str, api_key: str) -> dict | None:
+    """
+    Search TMDB for *title* and return metadata for the top result.
+
+    Retries up to ``_MAX_RETRIES`` times with exponential back-off on retryable
+    HTTP errors (429, 5xx) and network exceptions. Returns ``None`` if no
+    results are found or all retries are exhausted.
+    """
     delay = _BACKOFF
     for attempt in range(1, _MAX_RETRIES + 1):
         try:
@@ -69,6 +77,15 @@ def _search_movie(title: str, api_key: str) -> dict | None:
 
 
 def enrich_titles_with_tmdb(input_path: Path) -> Path:
+    """
+    Look up every unique title in *input_path* on TMDB and write a metadata CSV.
+
+    Deduplicates titles by normalised form before querying. Output is validated
+    against the ``film-metadata`` contract and written to
+    ``DATA_CURATED/film_metadata/film_metadata.csv``.
+
+    Returns the path to the written CSV.
+    """
     dataframe = pd.read_csv(input_path)
     titles = sorted(set(dataframe["title"].dropna().astype(str).tolist()))
     api_key = _get_api_key()

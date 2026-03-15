@@ -1,3 +1,4 @@
+"""Shared constants and utilities used across all domain modules."""
 from pathlib import Path
 
 
@@ -8,4 +9,5 @@ DATA_PRODUCTS = ROOT_DIR / "data" / "products"
 
 
 def normalize_title(value: str) -> str:
+    """Lowercase, strip, and collapse internal whitespace for fuzzy title matching."""
     return " ".join(value.strip().lower().split())
