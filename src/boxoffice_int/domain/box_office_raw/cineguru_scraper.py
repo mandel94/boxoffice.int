@@ -101,6 +101,160 @@ def _parse_entry_line(line: str, patterns: tuple[re.Pattern, re.Pattern]) -> dic
     return match.groupdict()
 
 
+def _extract_title_from_paragraph(paragraph, author: str | None = None) -> tuple[str | None, bool]:
+    """
+    Extract movie title from paragraph using strong/em elements.
+
+    Args:
+        paragraph: BeautifulSoup paragraph element
+        author: Normalized author name for author-specific extraction logic
+
+    Returns:
+        (title, has_warning): title extracted and whether multiple strong elements were found
+    """
+    strong_elements = paragraph.find_all("strong")
+
+    # Author-specific title extraction logic
+    if author == "Stefano Radice":
+        # Custom logic for Stefano Radice if needed in the future
+        pass
+
+    # Default extraction logic
+    if len(strong_elements) > 1:
+        # Multiple strong elements - try to find one with em inside
+        strong_with_em = [s for s in strong_elements if s.find("em")]
+        if strong_with_em:
+            title = strong_with_em[0].get_text(strip=True)
+            return title, True  # Warning: multiple strong elements found
+        else:
+            # Take the first strong if no em found
+            title = strong_elements[0].get_text(strip=True)
+            return title, True  # Warning: multiple strong elements found
+    elif len(strong_elements) == 1:
+        title = strong_elements[0].get_text(strip=True)
+        return title, False
+    else:
+        # Fallback to em elements
+        em_elements = paragraph.find_all("em")
+        if em_elements:
+            title = em_elements[0].get_text(strip=True)
+            return title, False
+        return None, False
+
+
+def _extract_fuzzy_numbers(text: str, author: str | None = None) -> dict[str, int | None]:
+    """
+    Extract numbers that precede 'euro' and cinema-related keywords.
+
+    Args:
+        text: Text to search in
+        author: Normalized author name for author-specific extraction logic
+
+    Returns dict with keys: 'euro', 'cinemas'
+    """
+    result = {"euro": None, "cinemas": None}
+
+    # Author-specific extraction logic
+    if author == "Stefano Radice":
+        # Custom logic for Stefano Radice if needed in the future
+        pass
+
+    # Default extraction logic
+    # Extract number immediately before "euro" (case insensitive)
+    euro_match = re.search(r"([\d.,]+)\s*euro", text, re.IGNORECASE)
+    if euro_match:
+        result["euro"] = _clean_number(euro_match.group(1))
+
+    # Extract number immediately before cinema/sala/sale keywords (fuzzy matching)
+    cinema_pattern = r"([\d.,]+)\s*(?:cinema|sala|sale)(?:\s|$|[.,;])"
+    cinema_match = re.search(cinema_pattern, text, re.IGNORECASE)
+    if cinema_match:
+        result["cinemas"] = _clean_number(cinema_match.group(1))
+
+    return result
+
+
+def _normalize_title_for_matching(title: str) -> str:
+    """Normalize title for matching between paragraphs and top 10."""
+    if not title:
+        return ""
+    # Remove extra whitespace, convert to lowercase, remove common punctuation
+    normalized = re.sub(r"\s+", " ", title.strip().lower())
+    normalized = re.sub(r"[–\-—:;.,!?]", "", normalized)
+    return normalized
+
+
+def _match_paragraph_to_top10(paragraph_title: str, top10_records: list[dict]) -> dict | None:
+    """Find matching record in top 10 based on title similarity."""
+    if not paragraph_title:
+        return None
+
+    normalized_para_title = _normalize_title_for_matching(paragraph_title)
+
+    for record in top10_records:
+        normalized_record_title = _normalize_title_for_matching(record["title"])
+
+        # Exact match first
+        if normalized_para_title == normalized_record_title:
+            return record
+
+        # Partial match - paragraph title contained in record title or vice versa
+        if (normalized_para_title in normalized_record_title or
+            normalized_record_title in normalized_para_title):
+            return record
+
+    return None
+
+
+def _parse_paragraphs(soup: BeautifulSoup, author: str | None = None) -> tuple[list[dict], list[str]]:
+    """
+    Parse paragraphs before top 10 to extract admissions and cinema data.
+
+    Args:
+        soup: BeautifulSoup object of the article
+        author: Normalized author name for author-specific parsing logic
+
+    Returns:
+        (paragraph_data, warnings): list of paragraph records and warning messages
+    """
+    content = soup.find("div", class_=re.compile(r"entry-content|post-content|article-content", re.I))
+    if not content:
+        content = soup.find("article")
+    if not content:
+        return [], []
+
+    paragraphs = content.find_all("p")
+    paragraph_data = []
+    warnings = []
+
+    for i, paragraph in enumerate(paragraphs):
+        # Skip paragraphs that are likely part of the top 10 (contain numbered list patterns)
+        paragraph_text = paragraph.get_text(strip=True)
+        if re.match(r"^\d{1,2}\s*[–\-]", paragraph_text):
+            break  # Stop when we reach the top 10 section
+
+        # Extract title
+        title, has_warning = _extract_title_from_paragraph(paragraph, author)
+        if has_warning:
+            warnings.append(f"Paragrafo {i+1}: multipli elementi strong trovati")
+
+        if not title:
+            continue  # Skip paragraphs without movie titles
+
+        # Extract numbers
+        numbers = _extract_fuzzy_numbers(paragraph_text, author)
+
+        if numbers["euro"] or numbers["cinemas"]:
+            paragraph_data.append({
+                "title": title,
+                "paragraph_gross_eur": numbers["euro"],
+                "paragraph_cinemas": numbers["cinemas"],
+                "paragraph_index": i
+            })
+
+    return paragraph_data, warnings
+
+
 def _fetch_html(url: str, page) -> str:
     """Navigate *page* to *url* and return its rendered HTML. Returns '' on timeout or error."""
     try:
@@ -123,6 +277,9 @@ def parse_article(html: str, article_date: date) -> list[dict]:
     author-specific parsing strategy if available. Falls back to default strategy
     for unknown authors.
 
+    Enhanced parsing: extracts admissions and cinema data from article paragraphs
+    before the top 10 list, then merges with ranking data from the numbered list.
+
     Tries the strict pattern first, then falls back to loose pattern.
     Lines that match neither are silently skipped.
     """
@@ -137,13 +294,22 @@ def parse_article(html: str, article_date: date) -> list[dict]:
     # Get parsing patterns based on author
     patterns = _get_parsing_patterns(author)
 
+    # Parse paragraphs for admissions and cinema data
+    paragraph_data, warnings = _parse_paragraphs(soup, author)
+    if warnings:
+        for warning in warnings:
+            LOG.warning("  %s", warning)
+    if paragraph_data:
+        LOG.debug("  Estratti %d paragrafi con dati numerici", len(paragraph_data))
+
     content = soup.find("div", class_=re.compile(r"entry-content|post-content|article-content", re.I))
     if not content:
         content = soup.find("article")
     if not content:
         return []
 
-    records: list[dict] = []
+    # Parse top 10 ranking data
+    top10_records: list[dict] = []
     for line in content.get_text(separator="\n").splitlines():
         line = line.strip()
         if not line or not re.match(r"^\d{1,2}\s*[–\-]", line):
@@ -153,18 +319,49 @@ def parse_article(html: str, article_date: date) -> list[dict]:
         if not group:
             continue
 
-        records.append(
-            {
-                "date": article_date.isoformat(),
-                "rank": int(group["rank"]),
-                "title": group["title"].strip(),
-                "gross_eur": _clean_number(group.get("gross")),
-                "admissions": _clean_number(group.get("admissions")),
-                "cinemas": _clean_number(group.get("cinemas")),
-                "avg_per_cinema_eur": _parse_avg(line),
-                "total_gross_eur": _clean_number(group.get("total")),
-            }
-        )
+        top10_records.append({
+            "rank": int(group["rank"]),
+            "title": group["title"].strip(),
+            "gross_eur": _clean_number(group.get("gross")),
+            "admissions": _clean_number(group.get("admissions")),
+            "cinemas": _clean_number(group.get("cinemas")),
+            "total_gross_eur": _clean_number(group.get("total")),
+        })
+
+    # Merge paragraph data with top 10 data
+    records: list[dict] = []
+    for record in top10_records:
+        # Try to find matching paragraph data
+        matched_paragraph = _match_paragraph_to_top10(record["title"], paragraph_data)
+
+        if matched_paragraph:
+            LOG.debug("  Matched '%s' con paragrafo %d", record["title"], matched_paragraph["paragraph_index"] + 1)
+
+            # Use paragraph data for cinemas if available, keep top10 data for admissions/gross
+            final_cinemas = matched_paragraph.get("paragraph_cinemas")
+            final_admissions = record["admissions"]  # Keep from top 10
+            final_gross = matched_paragraph.get("paragraph_gross_eur") or record["gross_eur"]
+
+            # If paragraph cinema data is not available, fall back to top 10 data
+            if final_cinemas is None:
+                final_cinemas = record["cinemas"]
+        else:
+            # No paragraph match - use top 10 data as-is
+            final_admissions = record["admissions"]
+            final_cinemas = record["cinemas"]
+            final_gross = record["gross_eur"]
+
+        records.append({
+            "date": article_date.isoformat(),
+            "rank": record["rank"],
+            "title": record["title"],
+            "gross_eur": final_gross,
+            "admissions": final_admissions,
+            "cinemas": final_cinemas,
+            "avg_per_cinema_eur": _parse_avg(record["title"]),  # Parse from original line if needed
+            "total_gross_eur": record["total_gross_eur"],
+        })
+
     return records
 
 
