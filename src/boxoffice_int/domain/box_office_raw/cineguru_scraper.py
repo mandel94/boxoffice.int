@@ -59,7 +59,13 @@ def _clean_number(value: str | None) -> int | None:
     """Strip Italian thousand separators (dots/commas) and return an integer, or None."""
     if value is None:
         return None
-    return int(re.sub(r"[.,]", "", value.strip()))
+    cleaned = re.sub(r"[.,]", "", value.strip())
+    if not cleaned:
+        return None
+    try:
+        return int(cleaned)
+    except ValueError:
+        return None
 
 
 def _parse_avg(line: str) -> int | None:
@@ -87,7 +93,7 @@ def _normalize_author(author: str | None) -> str | None:
 def _get_parsing_patterns(author: str | None) -> tuple[re.Pattern, re.Pattern]:
     """Get parsing patterns based on author. Returns (strict, loose) patterns."""
     if author == "Stefano Radice":
-        return RE_ENTRY_STEFANO_RADICE, RE_ENTRY_STEFANO_RADICE
+        return RE_ENTRY_STEFANO_RADICE, RE_ENTRY_LOOSE
     # Default fallback for unknown authors
     return RE_ENTRY, RE_ENTRY_LOOSE
 
@@ -440,6 +446,8 @@ def scrape_cineguru(start: date, end: date, delay: float = 2.0, output_path: Pat
     """
     all_records: list[dict] = []
     links: list[tuple[str, date]] = []
+    seen_in_range_hrefs: set[str] = set()
+    consecutive_pages_without_new_in_range = 0
 
     LOG.info("Avvio scraping Cineguru | range %s → %s | delay %.1fs", start, end, delay)
 
@@ -470,6 +478,22 @@ def scrape_cineguru(start: date, end: date, delay: float = 2.0, output_path: Pat
             if not in_range:
                 LOG.info("  nessun articolo nel range su questa pagina — stop paginazione")
                 break
+
+            new_in_range = [(href, d) for href, d in in_range if href not in seen_in_range_hrefs]
+            for href, _ in new_in_range:
+                seen_in_range_hrefs.add(href)
+
+            if not new_in_range:
+                consecutive_pages_without_new_in_range += 1
+                LOG.info(
+                    "  nessun nuovo link nel range (consecutivi=%d) — possibile duplicazione sidebar",
+                    consecutive_pages_without_new_in_range,
+                )
+                if consecutive_pages_without_new_in_range >= 2:
+                    LOG.info("  stop paginazione: solo duplicati nel range su pagine consecutive")
+                    break
+            else:
+                consecutive_pages_without_new_in_range = 0
 
             max_date = max((d for _, d in page_links), default=None)
             if max_date and max_date < start:
