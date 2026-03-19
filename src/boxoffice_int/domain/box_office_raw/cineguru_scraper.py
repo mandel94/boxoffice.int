@@ -39,6 +39,19 @@ RE_ENTRY_LOOSE = re.compile(
     re.VERBOSE | re.IGNORECASE,
 )
 
+# Author-specific regex patterns
+RE_ENTRY_STEFANO_RADICE = re.compile(
+    r"""
+    ^\s*(?P<rank>\d{1,2})\s*[–\-]\s*
+    (?P<title>.+?)\s*[–\-]\s*
+    (?P<gross>[\d.,]+)\s*euro
+    \s*\((?P<admissions>[\d.,]+)\s*spettatori\)
+    \s*[–\-]\s*(?P<cinemas>[\d.,]+)\s*cinema
+    .*?tot\.\s*(?P<total>[\d.,]+)
+    """,
+    re.VERBOSE | re.IGNORECASE,
+)
+
 LOG = logging.getLogger("box_office_raw")
 
 
@@ -53,6 +66,39 @@ def _parse_avg(line: str) -> int | None:
     """Extract avg-per-cinema revenue from a pattern like '… cinema / 12.345 euro …'."""
     match = re.search(r"cinema\s*/\s*([\d.,]+)\s*euro", line, re.IGNORECASE)
     return _clean_number(match.group(1)) if match else None
+
+
+def _extract_author(soup: BeautifulSoup) -> str | None:
+    """Extract and normalize author name from span.article-author."""
+    author_span = soup.find("span", class_="article-author")
+    if not author_span:
+        return None
+    author = author_span.get_text(strip=True)
+    return author.strip() if author else None
+
+
+def _normalize_author(author: str | None) -> str | None:
+    """Normalize author name for strategy matching."""
+    if not author:
+        return None
+    return author.strip()
+
+
+def _get_parsing_patterns(author: str | None) -> tuple[re.Pattern, re.Pattern]:
+    """Get parsing patterns based on author. Returns (strict, loose) patterns."""
+    if author == "Stefano Radice":
+        return RE_ENTRY_STEFANO_RADICE, RE_ENTRY_STEFANO_RADICE
+    # Default fallback for unknown authors
+    return RE_ENTRY, RE_ENTRY_LOOSE
+
+
+def _parse_entry_line(line: str, patterns: tuple[re.Pattern, re.Pattern]) -> dict | None:
+    """Parse a single entry line using given patterns."""
+    strict_pattern, loose_pattern = patterns
+    match = strict_pattern.match(line) or loose_pattern.match(line)
+    if not match:
+        return None
+    return match.groupdict()
 
 
 def _fetch_html(url: str, page) -> str:
@@ -73,10 +119,24 @@ def parse_article(html: str, article_date: date) -> list[dict]:
     """
     Parse a Cineguru box-office article and return one record per ranked entry.
 
-    Tries the strict RE_ENTRY pattern first, then falls back to RE_ENTRY_LOOSE.
+    Extracts author from span.article-author, normalizes it, and uses
+    author-specific parsing strategy if available. Falls back to default strategy
+    for unknown authors.
+
+    Tries the strict pattern first, then falls back to loose pattern.
     Lines that match neither are silently skipped.
     """
     soup = BeautifulSoup(html, "html.parser")
+
+    # Extract and normalize author
+    author = _extract_author(soup)
+    author = _normalize_author(author)
+    if author:
+        LOG.debug("  Articolo scritto da: %s", author)
+
+    # Get parsing patterns based on author
+    patterns = _get_parsing_patterns(author)
+
     content = soup.find("div", class_=re.compile(r"entry-content|post-content|article-content", re.I))
     if not content:
         content = soup.find("article")
@@ -89,11 +149,10 @@ def parse_article(html: str, article_date: date) -> list[dict]:
         if not line or not re.match(r"^\d{1,2}\s*[–\-]", line):
             continue
 
-        match = RE_ENTRY.match(line) or RE_ENTRY_LOOSE.match(line)
-        if not match:
+        group = _parse_entry_line(line, patterns)
+        if not group:
             continue
 
-        group = match.groupdict()
         records.append(
             {
                 "date": article_date.isoformat(),
