@@ -19,6 +19,10 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = ["pytest>=8.0"]
+warehouse = [
+    "psycopg2-binary>=2.9",
+    "rapidfuzz>=3.0",
+]
 
 [project.scripts]
 boxoffice-int = "boxoffice_int.pipeline:main"

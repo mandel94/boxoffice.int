@@ -56,6 +56,29 @@ function run-tests {
     py -3.12 -m pytest tests/ -v
 }
 
+function seed-dim-date {
+    py -3.12 -c "
+from boxoffice_int.warehouse.loader import get_connection, seed_dim_date
+conn = get_connection()
+n = seed_dim_date(conn)
+print(f'seed_dim_date: {n} rows inserted')
+conn.close()
+"
+}
+
+function load-warehouse {
+    param(
+        [Parameter(Mandatory)][string]$CsvPath,
+        [int]$SourceKey = 1
+    )
+    py -3.12 -c "
+from pathlib import Path
+from boxoffice_int.warehouse.loader import load_box_office_raw
+n = load_box_office_raw(Path(r'$CsvPath'), source_key=$SourceKey)
+print(f'load_box_office_raw: {n} rows inserted')
+"
+}
+
 # --- Summary -------------------------------------------------
 Write-Host ""
 Write-Host "  boxoffice.int - commands available:" -ForegroundColor Cyan
@@ -64,4 +87,10 @@ Write-Host "    ingest  -Start <YYYY-MM-DD> -End <YYYY-MM-DD>"
 Write-Host "    enrich  -Path <path/to/raw.csv>"
 Write-Host "    build   -Path <path/to/raw.csv> [-Metadata <path/to/metadata.csv>]"
 Write-Host "    run-tests"
+Write-Host "    load-warehouse  -CsvPath <path/to/raw.csv> [-SourceKey <int>]"
+Write-Host "    seed-dim-date"
+Write-Host ""
+Write-Host "  env vars required:" -ForegroundColor DarkGray
+Write-Host "    TMDB_API_KEY       (enrich step)"
+Write-Host "    BOXOFFICE_DB_URL   (warehouse steps, e.g. postgresql://user:pass@host:5432/db)"
 Write-Host ""
