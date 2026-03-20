@@ -1,2 +1,0 @@
-[console_scripts]
-boxoffice-int = boxoffice_int.pipeline:main
