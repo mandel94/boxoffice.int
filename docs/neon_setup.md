@@ -51,7 +51,7 @@ Oppure usa un tool come [`python-dotenv`](https://pypi.org/project/python-dotenv
 
 ```bash
 # Crea tutte le tabelle del star schema
-psql $BOXOFFICE_DB_URL -f src/boxoffice_int/warehouse/schema.sql
+psql $BOXOFFICE_DB_URL -f schema/schema.sql
 
 # Popola le tabelle di lookup
 psql $BOXOFFICE_DB_URL -f schema/seed_dim_genre.sql

@@ -658,7 +658,7 @@ WHERE extract(month FROM full_date) = 3;
 
 ### Adding a New Dimension
 
-1. Add table to `schema.sql`
+1. Add table to `schema/schema.sql`
 2. Update `loader.py` with lookup/insert logic
 3. Update fact table foreign keys
 4. Implement idempotent seed function (if applicable)
