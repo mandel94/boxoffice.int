@@ -173,7 +173,8 @@ def seed_dim_date(
         ON CONFLICT (date_key) DO NOTHING
     """
     with conn.cursor() as cur:
-        psycopg2.extras.execute_values(cur, sql, rows, page_size=500)
+        # Single batch (no page_size) so cur.rowcount reflects all inserted rows.
+        psycopg2.extras.execute_values(cur, sql, rows)
         inserted = cur.rowcount
     conn.commit()
     LOG.info("dim_date seeded: %d rows inserted (%s to %s)", inserted, start, end)

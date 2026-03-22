@@ -68,11 +68,28 @@ def _build_parser() -> argparse.ArgumentParser:
     build.add_argument("--input", type=Path, required=True, help="CSV raw box office")
     build.add_argument("--metadata", type=Path, default=None, help="CSV metadata opzionale")
 
+    # --- seed: populate dim_date in Neon ---
+    seed = sub.add_parser("seed", help="Popola dim_date su Neon (idempotente)")
+    seed.add_argument("--start", type=date.fromisoformat, default=date(2015, 1, 1),
+                      help="Data inizio (default: 2015-01-01)")
+    seed.add_argument("--end",   type=date.fromisoformat, default=date(2035, 12, 31),
+                      help="Data fine (default: 2035-12-31)")
+
+    # --- load: ingest CSV into Neon star schema ---
+    load = sub.add_parser("load", help="Carica CSV raw nel DB Neon (fact_box_office_daily)")
+    load.add_argument("--input", type=Path, required=True, help="CSV raw box office da caricare")
+    load.add_argument("--source-key", type=int, default=1, help="FK dim_source (default: 1=Cineguru)")
+
+    # --- enrich-db: TMDB enrichment of dim_film rows in Neon ---
+    enrich_db = sub.add_parser("enrich-db", help="Arricchisce dim_film con dati TMDB (solo righe senza tmdb_id)")
+    enrich_db.add_argument("--delay", type=float, default=1.0,
+                           help="Pausa tra chiamate TMDB (secondi, default: 1.0)")
+
     return parser
 
 
 def main() -> None:
-    """Entry point for the ``boxoffice-pipeline`` CLI command."""
+    """Entry point for the ``boxoffice-int`` CLI command."""
     logging.basicConfig(
         level=logging.INFO,
         format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
@@ -101,6 +118,26 @@ def main() -> None:
         fact_path, kpi_path = build_market_analytics(input_path=args.input, metadata_path=args.metadata)
         print(f"Fact dataset creato: {fact_path}")
         print(f"KPI dataset creato:  {kpi_path}")
+        return
+
+    if args.command == "seed":
+        from .warehouse.loader import get_connection, seed_dim_date  # optional dep
+        conn = get_connection()
+        n = seed_dim_date(conn, start=args.start, end=args.end)
+        conn.close()
+        print(f"dim_date: {n} righe inserite ({args.start} → {args.end})")
+        return
+
+    if args.command == "load":
+        from .warehouse.loader import load_box_office_raw  # optional dep
+        n = load_box_office_raw(csv_path=args.input, source_key=args.source_key)
+        print(f"fact_box_office_daily: {n} righe inserite da {args.input.name}")
+        return
+
+    if args.command == "enrich-db":
+        from .warehouse.enrich_db import enrich_dim_film  # optional dep
+        n = enrich_dim_film(delay=args.delay)
+        print(f"dim_film arricchiti: {n} film aggiornati con dati TMDB")
         return
 
     parser.print_help()

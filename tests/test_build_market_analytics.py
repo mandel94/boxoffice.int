@@ -37,6 +37,8 @@ def run(tmp_path: Path, monkeypatch):
     """Run build_market_analytics with DATA_PRODUCTS redirected to tmp_path."""
     monkeypatch.setattr(common_mod, "DATA_PRODUCTS", tmp_path)
     monkeypatch.setattr(build_mod, "DATA_PRODUCTS", tmp_path)
+    monkeypatch.setattr(common_mod, "DATA_CURATED", tmp_path)
+    monkeypatch.setattr(build_mod, "DATA_CURATED", tmp_path)
 
     def _run(csv_path: Path, metadata_path: Path | None = None):
         fact_path, kpi_path = build_mod.build_market_analytics(csv_path, metadata_path)

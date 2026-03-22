@@ -357,6 +357,7 @@ def parse_article(html: str, article_date: date) -> list[dict]:
             final_cinemas = record["cinemas"]
             final_gross = record["gross_eur"]
 
+        avg = (final_gross // final_cinemas) if (final_gross and final_cinemas) else None
         records.append({
             "date": article_date.isoformat(),
             "rank": record["rank"],
@@ -364,7 +365,7 @@ def parse_article(html: str, article_date: date) -> list[dict]:
             "gross_eur": final_gross,
             "admissions": final_admissions,
             "cinemas": final_cinemas,
-            "avg_per_cinema_eur": _parse_avg(record["title"]),  # Parse from original line if needed
+            "avg_per_cinema_eur": avg,
             "total_gross_eur": record["total_gross_eur"],
         })
 

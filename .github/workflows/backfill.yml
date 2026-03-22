@@ -1,0 +1,65 @@
+name: Backfill Box Office Pipeline
+
+on:
+  workflow_dispatch:
+    inputs:
+      start_date:
+        description: 'Data inizio (YYYY-MM-DD)'
+        required: true
+      end_date:
+        description: 'Data fine (YYYY-MM-DD)'
+        required: true
+      skip_load:
+        description: 'Salta il caricamento su Neon (solo scraping)'
+        required: false
+        default: 'false'
+        type: choice
+        options: ['false', 'true']
+
+jobs:
+  backfill:
+    runs-on: ubuntu-latest
+    env:
+      TMDB_API_KEY:     ${{ secrets.TMDB_API_KEY }}
+      BOXOFFICE_DB_URL: ${{ secrets.BOXOFFICE_DB_URL }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install package (with warehouse extras)
+        run: pip install -e ".[warehouse]"
+
+      - name: Install Playwright browsers
+        run: playwright install chromium --with-deps
+
+      - name: Ingest - Cineguru backfill
+        run: |
+          boxoffice-int ingest \
+            --start "${{ inputs.start_date }}" \
+            --end   "${{ inputs.end_date }}"
+
+      - name: Load to Neon
+        if: ${{ inputs.skip_load == 'false' }}
+        run: |
+          for csv in data/raw/box_office_raw/cineguru_*.csv; do
+            echo "Loading $csv …"
+            boxoffice-int load --input "$csv"
+          done
+
+      - name: Enrich DB - TMDB metadata
+        if: ${{ inputs.skip_load == 'false' }}
+        run: boxoffice-int enrich-db --delay 1.0
+
+      - name: Upload raw data
+        uses: actions/upload-artifact@v4
+        with:
+          name: backfill-raw-${{ inputs.start_date }}_${{ inputs.end_date }}
+          path: data/raw/box_office_raw/
+          retention-days: 90

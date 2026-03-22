@@ -7,9 +7,9 @@ import pandas as pd
 import requests
 
 from ...common import DATA_CURATED, normalize_title
+from ...contracts import cast_to_contract, load_contract, validate
 
 LOG = logging.getLogger(__name__)
-from ...contracts import cast_to_contract, load_contract, validate
 
 TMDB_BASE = "https://api.themoviedb.org/3"
 

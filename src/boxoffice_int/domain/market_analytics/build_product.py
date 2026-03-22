@@ -54,6 +54,9 @@ def build_market_analytics(input_path: Path, metadata_path: Path | None = None) 
         )
         .sort_values("date")
     )
+    # admissions/cinemas are nullable in raw data; contract requires non-null aggregates.
+    kpis["admissions_total"] = kpis["admissions_total"].fillna(0)
+    kpis["cinemas_total"] = kpis["cinemas_total"].fillna(0)
 
     kpis["avg_ticket_price_eur"] = (
         kpis["gross_total_eur"] / kpis["admissions_total"].replace(0, pd.NA)
