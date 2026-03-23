@@ -82,6 +82,7 @@ print(f'load_box_office_raw: {n} rows inserted')
 # --- Summary -------------------------------------------------
 Write-Host ""
 Write-Host "  boxoffice.int - commands available:" -ForegroundColor Cyan
+Write-Host "    .\init_db.ps1   (one-time schema init — run once on a fresh database)"
 Write-Host "    ingest  -Yesterday | -ThisWeek | -LastWeek | -ThisMonth | -LastMonth"
 Write-Host "    ingest  -Start <YYYY-MM-DD> -End <YYYY-MM-DD>"
 Write-Host "    enrich  -Path <path/to/raw.csv>"

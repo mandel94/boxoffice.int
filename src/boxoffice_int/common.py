@@ -1,6 +1,10 @@
 """Shared constants and utilities used across all domain modules."""
 from pathlib import Path
 
+from dotenv import load_dotenv
+
+load_dotenv()  # loads .env from project root (or any parent directory)
+
 
 ROOT_DIR = Path(__file__).resolve().parents[2]
 DATA_RAW = ROOT_DIR / "data" / "raw"
