@@ -7,7 +7,12 @@
 #
 #  Usage:
 #    .\init_db.ps1
+#    .\init_db.ps1 -ForceDrop
 # ============================================================
+
+param(
+    [switch]$ForceDrop
+)
 
 Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
@@ -21,7 +26,7 @@ if (Test-Path $envFile) {
     }
     Write-Host "[env] Loaded $envFile" -ForegroundColor Green
 } else {
-    Write-Warning "[env] .env not found — BOXOFFICE_DB_URL must already be set"
+        Write-Warning "[env] .env not found - BOXOFFICE_DB_URL must already be set"
 }
 
 $dbUrl = $env:BOXOFFICE_DB_URL
@@ -30,12 +35,21 @@ if (-not $dbUrl) {
     exit 1
 }
 
+if (-not $ForceDrop) {
+    Write-Host "[warn] This operation will DROP and recreate all warehouse tables." -ForegroundColor Yellow
+    $confirmation = Read-Host "Type DROP to continue"
+    if ($confirmation -cne "DROP") {
+        Write-Host "[cancelled] Initialization aborted. No changes were applied." -ForegroundColor Yellow
+        exit 0
+    }
+}
+
 # --- Helper --------------------------------------------------
 function Invoke-Psql {
     param([string]$File)
     $filePath = Join-Path $PSScriptRoot $File
     Write-Host "[psql] Applying $File ..." -ForegroundColor Cyan
-    psql $dbUrl -f $filePath
+    psql -d $dbUrl -f $filePath
     if ($LASTEXITCODE -ne 0) {
         Write-Error "psql failed on $File (exit $LASTEXITCODE). Aborting."
         exit $LASTEXITCODE
@@ -58,4 +72,4 @@ if ($LASTEXITCODE -ne 0) {
 }
 
 Write-Host ""
-Write-Host "[done] Database initialised successfully." -ForegroundColor Green
+Write-Host "[done] Database initialized successfully." -ForegroundColor Green
