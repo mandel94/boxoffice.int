@@ -1,0 +1,213 @@
+🎬 Strategia di Scraping Dati Cinetel
+1️⃣ Contesto Tecnico della Pagina
+
+La tabella non è una <table> HTML standard, ma una datatable Angular virtualizzata (ngx-datatable style) composta da componenti custom:
+
+<datatable-header>
+<datatable-body>
+<datatable-row-wrapper>
+<datatable-body-row>
+<datatable-body-cell>
+
+Non sono presenti attributi data-* identificativi per le colonne.
+L’identificazione delle colonne avviene esclusivamente per posizione.
+
+La tabella utilizza virtual scrolling (<datatable-scroller>), quindi nel DOM sono presenti solo le righe visibili.
+
+2️⃣ Struttura DOM Rilevante
+
+Gerarchia logica:
+
+div[role="table"]
+ ├── datatable-header
+ │     └── datatable-header-cell (x9 colonne)
+ └── datatable-body
+       └── datatable-selection
+             └── datatable-scroller
+                   └── datatable-row-wrapper
+                         └── datatable-body-row
+                               └── datatable-body-cell (x9)
+                                     └── .datatable-body-cell-label
+3️⃣ Mappatura Colonne (Indice Posizionale)
+Indice	Campo
+0	Posizione
+1	Titolo
+2	Prima Programmazione
+3	Nazione
+4	Distribuzione
+5	Incasso
+6	Presenze
+7	Incasso aggiornato
+8	Presenze aggiornate
+
+⚠️ Il titolo è contenuto in un <strong> interno alla cella.
+
+4️⃣ Principi Architetturali Obbligatori
+
+L’implementazione deve rispettare:
+
+DRY (no duplicazione logica di parsing)
+Separazione responsabilità
+Modularità
+Riutilizzabilità
+Testabilità
+Indipendenza dal framework di automazione (Selenium / Playwright / Puppeteer)
+🧱 5️⃣ Architettura Raccomandata
+A. Separare in 4 Layer
+1️⃣ Layer Selettori (Configurazione centralizzata)
+
+Creare una struttura configurabile:
+
+SELECTORS = {
+    "row": "datatable-body-row",
+    "cell": "datatable-body-cell",
+    "cell_label": ".datatable-body-cell-label"
+}
+
+E una mappatura colonne:
+
+COLUMN_MAP = {
+    "rank": 0,
+    "title": 1,
+    "release_date": 2,
+    "country": 3,
+    "distribution": 4,
+    "gross": 5,
+    "attendance": 6,
+    "gross_total": 7,
+    "attendance_total": 8
+}
+
+Mai usare numeri hardcoded nel codice di parsing.
+
+2️⃣ Layer Estrazione Righe
+
+Funzione generica:
+
+get_rows(driver) -> list[row_element]
+
+Selettore robusto:
+
+datatable-body datatable-body-row
+
+Mai usare nth-child globale.
+Sempre iterare riga per riga.
+
+3️⃣ Layer Parsing Riga (Funzione Pura)
+
+Funzione:
+
+parse_row(row_element) -> dict
+
+Responsabilità:
+
+Recuperare tutte le celle
+Accedere tramite indice configurato
+Estrarre .text
+Pulire formattazione numerica
+Restituire oggetto strutturato
+
+Nessuna logica di scroll o attesa qui.
+
+4️⃣ Layer Scroll Manager (Virtualizzazione)
+
+Poiché la tabella è virtualizzata:
+
+Implementare funzione:
+
+scroll_until_all_rows_loaded(container_element)
+
+Strategia robusta:
+
+Identificare .datatable-scroll
+Scroll incrementale
+Confrontare:
+numero righe prima/dopo scroll
+Terminare quando:
+numero righe non aumenta più
+
+Evitare scroll infinito.
+
+🔄 6️⃣ Strategia Anti-Fragilità
+
+Non basarsi su:
+
+classi dinamiche Angular _ngcontent-*
+stile inline width
+ordine dei wrapper intermedi
+
+Basarsi solo su:
+
+tag custom datatable-body-row
+datatable-body-cell
+struttura gerarchica stabile
+🧠 7️⃣ Strategia di Robustezza Avanzata
+Validazione header dinamica (consigliato)
+
+Per evitare rotture future:
+
+Leggere header dinamicamente
+Costruire mappatura colonna → indice
+Confrontare con expected schema
+Loggare mismatch
+
+Questo rende il sistema resiliente a:
+
+cambio ordine colonne
+aggiunta/rimozione campi
+🧪 8️⃣ Normalizzazione Dati
+
+Separare parsing numerico:
+
+parse_currency("€ 1.582.721") -> 1582721
+parse_number("195.734") -> 195734
+
+Mai lasciare formati stringa sporchi nel modello dati.
+
+📦 9️⃣ Output Modello Dati
+
+Restituire struttura coerente:
+
+{
+  "rank": 1,
+  "title": "...",
+  "release_date": "2026-03-19",
+  "country": "USA",
+  "distribution": "...",
+  "gross": 142330,
+  "attendance": 19119,
+  "gross_total": 1582721,
+  "attendance_total": 195734
+}
+
+Separare modello dati da logica scraping.
+
+🚫 10️⃣ Errori da Evitare
+Hardcoding selettori ripetuti
+Usare XPath fragili
+Dipendere dall’indice globale DOM
+Mischiare scroll + parsing
+Logica dentro loop principale
+Nessun controllo duplicati durante scroll
+🧩 11️⃣ Estendibilità
+
+La strategia deve permettere:
+
+Riutilizzo su altre tabelle ngx-datatable
+Cambio configurazione colonne
+Scraping pagine multiple
+Parallelizzazione futura
+🏁 Strategia Finale (Sintesi)
+
+La strategia di scraping dati Cinetel deve:
+
+Centralizzare selettori
+Centralizzare mapping colonne
+Iterare per riga
+Separare scroll da parsing
+Normalizzare dati
+Validare struttura header
+Restituire oggetti tipizzati
+Non dipendere da classi dinamiche Angular
+Essere framework-agnostica
+Essere facilmente testabile con mock DOM

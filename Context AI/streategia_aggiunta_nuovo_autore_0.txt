@@ -1,0 +1,35 @@
+```
+## Task: aggiungere un nuovo autore allo scraper Cineguru
+
+### Contesto
+Lo scraper cineguru_scraper.py usa un pattern Strategy per gestire formati
+diversi per autore. I nomi non appaiono mai in chiaro: vengono hashati con
+SHA-256[:16].
+
+### Autore da aggiungere
+Nome: Andrea Francesco Berni
+Hash: 693ae5de70c3ea16
+
+### Formato articolo (esempio righe classifica)
+1. L'ultima missione: Project Hail Mary – €127.955 – 288 cinema/€444 – Tot. €1.440.287
+2. Jumpers – Un salto tra gli animali – €56.670 – 264 cinema/€215 – Tot. €4.427.195
+6. Reminders of Him – La parte migliore di te – €23.870 – 202 cinema/€118 – Tot. €893.199
+8. Una battaglia dopo l'altra (One Battle After Another) – €21.115 – 189 cinema/€112 – Tot. €5.495.757
+
+Pattern: "N. Titolo – €GROSS – N cinema/€AVG – Tot. €TOTAL"
+Note:
+- Numerazione con punto (1. invece di 1 –)
+- Simbolo € prima dei valori monetari
+- Il titolo può contenere trattini interni e parentesi con titolo originale
+- admissions: non sempre presente nell'articolo, campo nullable in DB
+
+### Passi da implementare
+1. Scrivere strategy_693ae5de70c3ea16(lines) con regex primaria + fallback
+   per titoli con trattini interni
+2. Registrare la strategia in AUTHOR_STRATEGIES
+3. Verificare che _detect_author_hash() rilevi correttamente l'autore
+   dall'HTML di screenweek.it (meta tag o selettori WordPress)
+4. Scrivere test unitari con le righe campione fornite sopra
+
+Rispondimi sempre in italiano.
+```
