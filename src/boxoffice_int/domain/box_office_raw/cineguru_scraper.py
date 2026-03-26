@@ -1,3 +1,4 @@
+import hashlib
 import logging
 import re
 import time
@@ -52,6 +53,42 @@ RE_ENTRY_STEFANO_RADICE = re.compile(
     re.VERBOSE | re.IGNORECASE,
 )
 
+# Author 693ae5de70c3ea16 (Andrea Francesco Berni)
+# Format: "N. Titolo – €GROSS – N cinema/€AVG – Tot. €TOTAL"
+# Example: "1. L'ultima missione: Project Hail Mary – €127.955 – 288 cinema/€444 – Tot. €1.440.287"
+# Greedy title (.+) handles internal dashes via backtracking to last '– €'
+RE_ENTRY_693AE5DE70C3EA16 = re.compile(
+    r"""
+    ^\s*(?P<rank>\d{1,2})\.\s+
+    (?P<title>.+)\s*[–\-]\s*
+    €\s*(?P<gross>[\d.,]+)\s*[–\-]\s*
+    (?P<cinemas>[\d.,]+)\s*cinema/€\s*(?P<avg>[\d.,]+)
+    (?:\s*[–\-]\s*Tot\.\s*€\s*(?P<total>[\d.,]+))?
+    """,
+    re.VERBOSE | re.IGNORECASE,
+)
+
+# Loose fallback for author 693ae5de70c3ea16 — more permissive
+RE_ENTRY_LOOSE_693AE5DE70C3EA16 = re.compile(
+    r"""
+    ^\s*(?P<rank>\d{1,2})\.\s+
+    (?P<title>.+?)\s*[–\-]\s*
+    €\s*(?P<gross>[\d.,]+)
+    (?:.*?(?P<cinemas>[\d.,]+)\s*cinema)?
+    (?:.*?Tot\.\s*€\s*(?P<total>[\d.,]+))?
+    """,
+    re.VERBOSE | re.IGNORECASE,
+)
+
+# Registry: author SHA-256[:16] hash → (strict_pattern, loose_pattern)
+# Hash computed as: hashlib.sha256(author_name.encode()).hexdigest()[:16]
+# ca77d5532d884726 = Stefano Radice
+# 693ae5de70c3ea16 = Andrea Francesco Berni
+AUTHOR_STRATEGIES: dict[str, tuple[re.Pattern, re.Pattern]] = {
+    "ca77d5532d884726": (RE_ENTRY_STEFANO_RADICE, RE_ENTRY_LOOSE),
+    "693ae5de70c3ea16": (RE_ENTRY_693AE5DE70C3EA16, RE_ENTRY_LOOSE_693AE5DE70C3EA16),
+}
+
 LOG = logging.getLogger("box_office_raw")
 
 
@@ -90,11 +127,29 @@ def _normalize_author(author: str | None) -> str | None:
     return author.strip()
 
 
-def _get_parsing_patterns(author: str | None) -> tuple[re.Pattern, re.Pattern]:
-    """Get parsing patterns based on author. Returns (strict, loose) patterns."""
-    if author == "Stefano Radice":
-        return RE_ENTRY_STEFANO_RADICE, RE_ENTRY_LOOSE
-    # Default fallback for unknown authors
+def _detect_author_hash(soup: BeautifulSoup) -> str | None:
+    """
+    Extract the author from article HTML and return SHA-256[:16] hash.
+
+    Tries span.article-author first (Cineguru/Screenweek selector),
+    then falls back to the WordPress <meta name="author"> tag.
+    Returns None if no author can be identified.
+    """
+    author = _extract_author(soup)
+    if not author:
+        meta = soup.find("meta", {"name": "author"})
+        if meta and meta.get("content"):
+            author = meta["content"].strip()
+    if not author:
+        return None
+    return hashlib.sha256(author.encode()).hexdigest()[:16]
+
+
+def _get_parsing_patterns(author_hash: str | None) -> tuple[re.Pattern, re.Pattern]:
+    """Return (strict, loose) regex patterns for the given author hash."""
+    if author_hash and author_hash in AUTHOR_STRATEGIES:
+        return AUTHOR_STRATEGIES[author_hash]
+    # Default fallback for unknown or missing authors
     return RE_ENTRY, RE_ENTRY_LOOSE
 
 
@@ -235,8 +290,9 @@ def _parse_paragraphs(soup: BeautifulSoup, author: str | None = None) -> tuple[l
 
     for i, paragraph in enumerate(paragraphs):
         # Skip paragraphs that are likely part of the top 10 (contain numbered list patterns)
+        # Handles both "N – Title" and "N. Title" formats
         paragraph_text = paragraph.get_text(strip=True)
-        if re.match(r"^\d{1,2}\s*[–\-]", paragraph_text):
+        if re.match(r"^\d{1,2}\s*[.\-–]", paragraph_text):
             break  # Stop when we reach the top 10 section
 
         # Extract title
@@ -297,8 +353,11 @@ def parse_article(html: str, article_date: date) -> list[dict]:
     if author:
         LOG.debug("  Articolo scritto da: %s", author)
 
-    # Get parsing patterns based on author
-    patterns = _get_parsing_patterns(author)
+    # Get parsing patterns based on author hash
+    author_hash = _detect_author_hash(soup)
+    if author_hash:
+        LOG.debug("  Author hash: %s", author_hash)
+    patterns = _get_parsing_patterns(author_hash)
 
     # Parse paragraphs for admissions and cinema data
     paragraph_data, warnings = _parse_paragraphs(soup, author)
@@ -315,10 +374,11 @@ def parse_article(html: str, article_date: date) -> list[dict]:
         return []
 
     # Parse top 10 ranking data
+    # Supports both "N – Title" (default) and "N. Title" (author 693ae5de70c3ea16) formats
     top10_records: list[dict] = []
     for line in content.get_text(separator="\n").splitlines():
         line = line.strip()
-        if not line or not re.match(r"^\d{1,2}\s*[–\-]", line):
+        if not line or not re.match(r"^\d{1,2}\s*[.\-–]", line):
             continue
 
         group = _parse_entry_line(line, patterns)
