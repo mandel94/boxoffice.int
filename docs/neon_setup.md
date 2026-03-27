@@ -1,37 +1,37 @@
-# Connessione al database Neon
+# Connecting to the Neon Database
 
-## Prerequisiti
+## Prerequisites
 
-- Account su [neon.tech](https://neon.tech) con accesso al progetto `boxoffice.int`
-- Python con le dipendenze warehouse installate:
+- Account on [neon.tech](https://neon.tech) with access to the `boxoffice.int` project
+- Python with warehouse dependencies installed:
   ```bash
   pip install -e ".[warehouse]"
   ```
 
 ---
 
-## 1. Ottenere la connection string
+## 1. Retrieve the connection string
 
-1. Vai su **Neon Console → Projects → boxoffice.int → Dashboard**
-2. Clicca **Connection Details** (angolo in alto a destra)
-3. Seleziona il branch (`main`) e il ruolo (`owner` o il ruolo dedicato)
-4. Copia la stringa in formato **psycopg2 / libpq**:
+1. Go to **Neon Console → Projects → boxoffice.int → Dashboard**
+2. Click **Connection Details** (top-right corner)
+3. Select the branch (`main`) and role (`owner` or a dedicated role)
+4. Copy the string in **psycopg2 / libpq** format:
    ```
    postgresql://<user>:<password>@<host>.neon.tech/<dbname>?sslmode=require
    ```
 
 ---
 
-## 2. Configurazione locale
+## 2. Local configuration
 
-Crea un file `.env` nella root del progetto (già in `.gitignore`):
+Create a `.env` file in the project root (already in `.gitignore`):
 
 ```env
 BOXOFFICE_DB_URL=postgresql://<user>:<password>@<host>.neon.tech/<dbname>?sslmode=require
-TMDB_API_KEY=<la-tua-chiave-tmdb>
+TMDB_API_KEY=<your-tmdb-key>
 ```
 
-Poi esporta la variabile prima di usare la CLI:
+Then export the variable before using the CLI:
 
 ```powershell
 # PowerShell
@@ -43,49 +43,49 @@ $env:BOXOFFICE_DB_URL = "postgresql://..."
 export BOXOFFICE_DB_URL="postgresql://..."
 ```
 
-Oppure usa un tool come [`python-dotenv`](https://pypi.org/project/python-dotenv/) o [`direnv`](https://direnv.net/).
+Or use a tool like [`python-dotenv`](https://pypi.org/project/python-dotenv/) or [`direnv`](https://direnv.net/).
 
 ---
 
-## 3. Inizializzare lo schema (prima volta)
+## 3. Initialize the schema (first time)
 
 ```bash
-# Crea tutte le tabelle del star schema
+# Create all star schema tables
 psql $BOXOFFICE_DB_URL -f schema/schema.sql
 
-# Popola le tabelle di lookup
+# Populate lookup tables
 psql $BOXOFFICE_DB_URL -f schema/seed_dim_genre.sql
 psql $BOXOFFICE_DB_URL -f schema/seed_dim_distributor.sql
 
-# Popola dim_date (2015–2035)
+# Populate dim_date (2015–2035)
 boxoffice-int seed
 ```
 
 ---
 
-## 4. Comandi CLI warehouse
+## 4. Warehouse CLI commands
 
-| Comando | Descrizione |
+| Command | Description |
 |---------|-------------|
-| `boxoffice-int seed` | Popola `dim_date` (idempotente) |
-| `boxoffice-int load --input <csv>` | Carica un CSV raw in `fact_box_office_daily` |
-| `boxoffice-int enrich-db` | Arricchisce `dim_film` con dati TMDB |
+| `boxoffice-int seed` | Populate `dim_date` (idempotent) |
+| `boxoffice-int load --input <csv>` | Load a raw CSV into `fact_box_office_daily` |
+| `boxoffice-int enrich-db` | Enrich `dim_film` with TMDB data |
 
 ---
 
-## 5. Configurazione GitHub Actions
+## 5. GitHub Actions configuration
 
-I workflow CI leggono la connection string dai repository secrets. Per configurarli:
+CI workflows read the connection string from repository secrets. To configure them:
 
 1. **GitHub → Settings → Secrets and variables → Actions → New repository secret**
-2. Aggiungi:
-   - `BOXOFFICE_DB_URL` — la connection string Neon (con `sslmode=require`)
-   - `TMDB_API_KEY` — la chiave API TMDB
+2. Add:
+   - `BOXOFFICE_DB_URL` — the Neon connection string (with `sslmode=require`)
+   - `TMDB_API_KEY` — the TMDB API key
 
 ---
 
-## Note
+## Notes
 
-- La connection string include la password in chiaro: non commitarla mai.
-- Neon mette in pausa il database dopo inattività sul piano gratuito; la prima query può richiedere 1–2 secondi di cold start.
-- Per ambienti separati (dev/prod) usa branch Neon distinti e connection string diverse.
+- The connection string includes the password in plain text: never commit it.
+- Neon pauses the database after inactivity on the free plan; the first query may take 1–2 seconds of cold start.
+- For separate environments (dev/prod) use distinct Neon branches and different connection strings.

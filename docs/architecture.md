@@ -1,57 +1,57 @@
-# Architettura Data Product (Data Mesh)
+# Data Product Architecture (Data Mesh)
 
 ## 1. Product thinking
 
-Il dataset analytics è trattato come prodotto:
+The analytics dataset is treated as a product:
 
-- owner espliciti per dominio
-- schema contrattualizzato
-- output versionabile e discoverable
+- Explicit ownership per domain
+- Contractualized schema
+- Versionable and discoverable output
 
-## 2. Domini e ownership
+## 2. Domains and ownership
 
 - **Domain `box_office_raw`**
-  - responsabilità: ingestione, parsing e quality check base
-  - output: tabella daily per film
+  - Responsibility: ingestion, parsing, and basic quality checks
+  - Output: daily per-film table
 - **Domain `film_metadata`**
-  - responsabilità: arricchimento metadati esterni
-  - output: anagrafica film normalizzata
+  - Responsibility: external metadata enrichment
+  - Output: normalized film registry
 - **Domain `market_analytics`**
-  - responsabilità: KPI, aggregazioni, dataset consumabile BI
-  - output: fact giornaliero e KPI giornalieri
+  - Responsibility: KPIs, aggregations, BI-consumable dataset
+  - Output: daily fact and daily KPIs
 
-## 3. Layer dati
+## 3. Data layers
 
-- `data/raw/`: dati estratti dalla fonte senza trasformazioni complesse
-- `data/curated/`: normalizzazioni e arricchimenti
-- `data/products/`: dataset finali per consumo analitico
+- `data/raw/`: data extracted from source without complex transformations
+- `data/curated/`: normalizations and enrichments
+- `data/products/`: final datasets for analytics consumption
 
-## 4. Contratti dati
+## 4. Data contracts
 
-I contratti sono in `contracts/` e definiscono:
+Contracts are in `contracts/` and define:
 
-- nomi colonna
-- tipi attesi
-- nullability minima
-- semantica dei campi principali
+- Column names
+- Expected types
+- Minimum nullability
+- Semantics of main fields
 
-## 5. Lineage pipeline
+## 5. Pipeline lineage
 
-1. Scraper Cineguru -> `box_office_raw`
-2. Enrichment TMDB -> `film_metadata`
-3. Join + KPI -> `market_analytics`
+1. Cineguru Scraper → `box_office_raw`
+2. TMDB Enrichment → `film_metadata`
+3. Join + KPIs → `market_analytics`
 
-## 6. Quality gate minimi
+## 6. Minimum quality gates
 
-- colonne obbligatorie presenti
-- `rank` tra 1 e 10
-- `gross_eur` non negativo
-- deduplicazione su (`date`, `rank`, `title`)
+- Mandatory columns present
+- `rank` between 1 and 10
+- `gross_eur` non-negative
+- Deduplication on (`date`, `rank`, `title`)
 
-## 7. Roadmap industrializzazione
+## 7. Industrialization roadmap
 
-- scheduler giornaliero
-- retry policy e alerting
-- osservabilità (log strutturati, metriche)
-- test qualità dati automatici
-- publication layer su DWH
+- Daily scheduler
+- Retry policy and alerting
+- Observability (structured logs, metrics)
+- Automated data quality tests
+- Publication layer on DWH

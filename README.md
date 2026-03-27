@@ -1,49 +1,49 @@
-# boxoffice.int — Data Product (Italia Box Office)
+# boxoffice.int — Data Product (Italian Box Office)
 
-Data product costruito con approccio **Data Mesh** per analizzare il box office italiano su base giornaliera.
+Data product built with a **Data Mesh** approach to analyze the Italian box office on a daily basis.
 
-## Obiettivo
+## Goal
 
-Produrre un dataset consumabile da BI/analytics con:
+Produce a BI/analytics-consumable dataset with:
 
-- classifica giornaliera per film
-- KPI giornalieri di mercato
+- daily per-film rankings
+- daily market KPIs
 
 ---
 
-## Prerequisiti
+## Prerequisites
 
-| Requisito | Versione minima |
-|-----------|----------------|
+| Requirement | Minimum version |
+|-------------|----------------|
 | Python | 3.11 |
-| Playwright (Chromium) | installato via `playwright install chromium` |
-| `TMDB_API_KEY` | variabile d'ambiente obbligatoria per `enrich` |
+| Playwright (Chromium) | installed via `playwright install chromium` |
+| `TMDB_API_KEY` | required environment variable for `enrich` |
 
-## Installazione
+## Installation
 
 ```bash
 pip install -e ".[dev]"
 playwright install chromium
 ```
 
-## Variabili d'ambiente
+## Environment variables
 
 ```bash
-# Obbligatoria per il comando enrich
-export TMDB_API_KEY=<la_tua_chiave>
+# Required for the enrich command
+export TMDB_API_KEY=<your_key>
 ```
 
-Su Windows con PowerShell:
+On Windows with PowerShell:
 
 ```powershell
-$env:TMDB_API_KEY = "<la_tua_chiave>"
+$env:TMDB_API_KEY = "<your_key>"
 ```
 
 ---
 
-## Utilizzo CLI
+## CLI Usage
 
-### 1. Ingestione raw da Cineguru
+### 1. Raw ingestion from Cineguru
 
 ```bash
 boxoffice-int ingest --start 2026-01-01 --end 2026-01-31
@@ -51,7 +51,7 @@ boxoffice-int ingest --start 2026-01-01 --end 2026-01-31
 
 Output: `data/raw/box_office_raw/cineguru_2026-01-01_2026-01-31.csv`
 
-### 2. Arricchimento metadati TMDB
+### 2. TMDB metadata enrichment
 
 ```bash
 boxoffice-int enrich --input data/raw/box_office_raw/cineguru_2026-01-01_2026-01-31.csv
@@ -59,7 +59,7 @@ boxoffice-int enrich --input data/raw/box_office_raw/cineguru_2026-01-01_2026-01
 
 Output: `data/curated/film_metadata/film_metadata.csv`
 
-### 3. Build data product analytics
+### 3. Build analytics data product
 
 ```bash
 boxoffice-int build \
@@ -71,11 +71,11 @@ Output:
 - `data/products/market_analytics/fact_daily_boxoffice.parquet`
 - `data/products/market_analytics/kpi_daily_market.parquet`
 
-> `--metadata` è opzionale: se omesso il build procede senza join.
+> `--metadata` is optional: if omitted the build proceeds without the join.
 
 ---
 
-## Test
+## Tests
 
 ```bash
 pytest tests/ -v
@@ -83,39 +83,38 @@ pytest tests/ -v
 
 ---
 
-## Layer dati
+## Data layers
 
 ```
 data/
-  raw/          # output ingestion (CSV)
-  curated/      # output enrichment (CSV)
-  products/     # output build (Parquet, consumo BI)
+  raw/          # ingestion output (CSV)
+  curated/      # enrichment output (CSV)
+  products/     # build output (Parquet, BI consumption)
 ```
 
-## Struttura domini
+## Domain structure
 
 ```
 src/boxoffice_int/
   domain/
-    box_office_raw/     # scraping Cineguru
-    film_metadata/      # arricchimento TMDB
-    market_analytics/   # KPI aggregati
-  contracts.py          # validazione contratti Pandera
+    box_office_raw/     # Cineguru scraping
+    film_metadata/      # TMDB enrichment
+    market_analytics/   # aggregated KPIs
+  contracts.py          # Pandera contract validation
   pipeline.py           # CLI entry-point
 contracts/              # YAML data contracts
 ```
-- arricchimento metadati film (TMDB)
 
-## Domini Data Mesh
+## Data Mesh Domains
 
 1. `box_office_raw` (source-aligned)
-   - ingestione dati Cineguru in formato raw e curated
+   - raw and curated ingestion of Cineguru data
 2. `film_metadata` (source-aligned)
-   - metadati film da TMDB
+   - film metadata from TMDB
 3. `market_analytics` (consumer-aligned)
-   - data product finale con KPI e join tra domini
+   - final data product with KPIs and cross-domain join
 
-## Struttura progetto
+## Project structure
 
 ```text
 src/boxoffice_int/
@@ -134,7 +133,7 @@ docs/
   architecture.md
 ```
 
-## CI / orchestrazione
+## CI / orchestration
 
-Il workflow `.github/workflows/daily_pipeline.yml` esegue ogni giorno alle 08:00 UTC:
-`test → ingest → enrich → build`. Configura il secret `TMDB_API_KEY` nel repository GitHub.
+The `.github/workflows/daily_pipeline.yml` workflow runs every day at 08:00 UTC:
+`test → ingest → enrich → build`. Configure the `TMDB_API_KEY` secret in the GitHub repository.

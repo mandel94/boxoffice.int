@@ -187,13 +187,13 @@ CREATE TABLE dim_date (
     year              SMALLINT NOT NULL,
     quarter           SMALLINT NOT NULL,          -- 1-4
     month             SMALLINT NOT NULL,          -- 1-12
-    month_name_it     VARCHAR(20) NOT NULL,       -- "gennaio", "febbraio", …
+    month_name_it     VARCHAR(20) NOT NULL,       -- "January", "February", … (Italian locale)
     week_number       SMALLINT NOT NULL,          -- ISO 8601
     day_of_week       SMALLINT NOT NULL,          -- 1=Mon, 7=Sun
     is_weekend        BOOLEAN NOT NULL,           -- Mon-Fri=false, Sat-Sun=true
     is_holiday        BOOLEAN NOT NULL DEFAULT,   -- Italian holidays
     holiday_name      VARCHAR(60),                -- NULL if not a holiday
-    season            VARCHAR(10) NOT NULL,       -- "primavera", "estate", "autunno", "inverno"
+    season            VARCHAR(10) NOT NULL,       -- "spring", "summer", "autumn", "winter"
     cinema_week       SMALLINT NOT NULL,          -- Italian cinema week indicator
     created_at        TIMESTAMP NOT NULL DEFAULT NOW()
 );
