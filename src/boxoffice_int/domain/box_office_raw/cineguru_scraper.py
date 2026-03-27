@@ -41,7 +41,7 @@ RE_ENTRY_LOOSE = re.compile(
 )
 
 # Author-specific regex patterns
-RE_ENTRY_STEFANO_RADICE = re.compile(
+RE_ENTRY_CA77D5532D884726 = re.compile(
     r"""
     ^\s*(?P<rank>\d{1,2})\s*[–\-]\s*
     (?P<title>.+?)\s*[–\-]\s*
@@ -82,10 +82,8 @@ RE_ENTRY_LOOSE_693AE5DE70C3EA16 = re.compile(
 
 # Registry: author SHA-256[:16] hash → (strict_pattern, loose_pattern)
 # Hash computed as: hashlib.sha256(author_name.encode()).hexdigest()[:16]
-# ca77d5532d884726 = Stefano Radice
-# 693ae5de70c3ea16 = Andrea Francesco Berni
 AUTHOR_STRATEGIES: dict[str, tuple[re.Pattern, re.Pattern]] = {
-    "ca77d5532d884726": (RE_ENTRY_STEFANO_RADICE, RE_ENTRY_LOOSE),
+    "ca77d5532d884726": (RE_ENTRY_CA77D5532D884726, RE_ENTRY_LOOSE),
     "693ae5de70c3ea16": (RE_ENTRY_693AE5DE70C3EA16, RE_ENTRY_LOOSE_693AE5DE70C3EA16),
 }
 
@@ -175,11 +173,6 @@ def _extract_title_from_paragraph(paragraph, author: str | None = None) -> tuple
     """
     strong_elements = paragraph.find_all("strong")
 
-    # Author-specific title extraction logic
-    if author == "Stefano Radice":
-        # Custom logic for Stefano Radice if needed in the future
-        pass
-
     # Default extraction logic
     if len(strong_elements) > 1:
         # Multiple strong elements - try to find one with em inside
@@ -214,11 +207,6 @@ def _extract_fuzzy_numbers(text: str, author: str | None = None) -> dict[str, in
     Returns dict with keys: 'euro', 'cinemas'
     """
     result = {"euro": None, "cinemas": None}
-
-    # Author-specific extraction logic
-    if author == "Stefano Radice":
-        # Custom logic for Stefano Radice if needed in the future
-        pass
 
     # Default extraction logic
     # Extract number immediately before "euro" (case insensitive)

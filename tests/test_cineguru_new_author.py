@@ -139,7 +139,7 @@ class TestDetectAuthorHash:
         soup = BeautifulSoup(html, "html.parser")
         assert _detect_author_hash(soup) == AUTHOR_HASH
 
-    def test_stefano_radice_hash(self):
+    def test_ca77d5532d884726_hash(self):
         html = self._html_with_author("Stefano Radice")
         soup = BeautifulSoup(html, "html.parser")
         expected = hashlib.sha256("Stefano Radice".encode()).hexdigest()[:16]
@@ -170,7 +170,7 @@ class TestGetParsingPatterns:
 
     def test_all_registered_hashes_in_strategies(self):
         assert AUTHOR_HASH in AUTHOR_STRATEGIES
-        assert "ca77d5532d884726" in AUTHOR_STRATEGIES  # Stefano Radice
+        assert "ca77d5532d884726" in AUTHOR_STRATEGIES
 
 
 # ---------------------------------------------------------------------------

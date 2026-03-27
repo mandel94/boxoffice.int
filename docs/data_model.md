@@ -406,7 +406,7 @@ df = scrape_cineguru(
 - Uses Playwright for client-side rendering (handles JavaScript)
 - Implements regex patterns for robust box office entry parsing
 - Normalizes numbers (Italian format: dots/commas as thousand separators)
-- Handles author-specific formatting variations (e.g., "Stefano Radice" author patterns)
+- Handles author-specific formatting variations (per-author regex strategies via hash registry)
 
 **Output Contract:** `box_office_raw_daily.schema.yaml`
 

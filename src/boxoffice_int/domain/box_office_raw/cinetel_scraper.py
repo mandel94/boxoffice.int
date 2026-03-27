@@ -344,7 +344,7 @@ def scrape_cinetel(
     output_dir = DATA_RAW / "box_office_raw"
     output_dir.mkdir(parents=True, exist_ok=True)
     if output_path is None:
-        output_path = output_dir / f"cinetel_{target_date}_{target_date}.csv"
+        output_path = output_dir / f"cinetel_{target_date}.csv"
 
     dataframe.to_csv(output_path, index=False)
     LOG.info("Dataset scritto: %s (%d righe)", output_path, len(dataframe))
