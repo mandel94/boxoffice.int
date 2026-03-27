@@ -142,11 +142,11 @@ def _validate_headers(page) -> dict[str, int]:
             dynamic_map["country"] = i
         elif "distribu" in label:
             dynamic_map["distribution"] = i
-        elif "incasso" in label and "aggiornat" in label:
+        elif "incasso" in label and label.strip() != "incasso":
             dynamic_map["gross_total"] = i
         elif "incasso" in label:
             dynamic_map["gross"] = i
-        elif "presenze" in label and "aggiornat" in label:
+        elif "presenze" in label and label.strip() != "presenze":
             dynamic_map["attendance_total"] = i
         elif "presenze" in label:
             dynamic_map["attendance"] = i
@@ -266,13 +266,20 @@ def _fetch_table_data(page, url: str) -> list[dict]:
         LOG.warning("Errore caricamento pagina Cinetel: %s", exc)
         return []
 
-    # Validazione header dinamica
-    column_map = _validate_headers(page)
+    # La pagina contiene più tabelle (giornaliera, settimanale, annuale).
+    # Si usa solo la prima ngx-datatable (box office giornaliero).
+    table_el = page.query_selector("ngx-datatable")
+    if table_el is None:
+        LOG.warning("Nessuna ngx-datatable trovata su: %s", url)
+        return []
+
+    # Validazione header dinamica (scoped alla prima tabella)
+    column_map = _validate_headers(table_el)
 
     # Scroll fino al caricamento completo (virtual table)
     scroll_until_all_rows_loaded(page)
 
-    rows = get_rows(page)
+    rows = get_rows(table_el)
     LOG.info("  Righe trovate dopo scroll completo: %d", len(rows))
 
     records: list[dict] = []
