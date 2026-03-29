@@ -4,6 +4,7 @@ from datetime import date, timedelta
 from pathlib import Path
 
 from .domain.box_office_raw.cineguru_scraper import scrape_cineguru
+from .domain.box_office_raw.cinetel_scraper import scrape_cinetel
 from .domain.film_metadata.tmdb_client import enrich_titles_with_tmdb
 from .domain.market_analytics.build_product import build_market_analytics
 
@@ -78,12 +79,28 @@ def _build_parser() -> argparse.ArgumentParser:
     # --- load: ingest CSV into Neon star schema ---
     load = sub.add_parser("load", help="Carica CSV raw nel DB Neon (fact_box_office_daily)")
     load.add_argument("--input", type=Path, required=True, help="CSV raw box office da caricare")
-    load.add_argument("--source-key", type=int, default=1, help="FK dim_source (default: 1=Cineguru)")
+    load.add_argument("--source-key", type=int, default=1,
+                      help="FK dim_source fallback quando il CSV non ha colonna source (default: 1=Cineguru)")
 
     # --- enrich-db: TMDB enrichment of dim_film rows in Neon ---
     enrich_db = sub.add_parser("enrich-db", help="Arricchisce dim_film con dati TMDB (solo righe senza tmdb_id)")
     enrich_db.add_argument("--delay", type=float, default=1.0,
                            help="Pausa tra chiamate TMDB (secondi, default: 1.0)")
+
+    # --- ingest-cinetel: scarica bollettino giornaliero Cinetel ---
+    ingest_cinetel = sub.add_parser("ingest-cinetel", help="Ingestione raw da Cinetel (bollettino giornaliero)")
+    ingest_cinetel.add_argument("--date",  type=date.fromisoformat, required=True,
+                                dest="target_date", help="Data del bollettino YYYY-MM-DD")
+    ingest_cinetel.add_argument("--url",   type=str, required=True,
+                                help="URL completo della pagina Cinetel con la datatable")
+
+    # --- sunday-fallback: calcola domenica da articolo fine-settimana Cineguru ---
+    sunday_fb = sub.add_parser("sunday-fallback",
+                                help="Calcola domenica da differenza weekend–feriale (fallback Cineguru)")
+    sunday_fb.add_argument("--date", type=date.fromisoformat, required=True,
+                           dest="sunday_date", help="Data domenica YYYY-MM-DD")
+    sunday_fb.add_argument("--delay", type=float, default=2.0,
+                           help="Delay richieste Cineguru (secondi, default: 2.0)")
 
     return parser
 
@@ -138,6 +155,29 @@ def main() -> None:
         from .warehouse.enrich_db import enrich_dim_film  # optional dep
         n = enrich_dim_film(delay=args.delay)
         print(f"dim_film arricchiti: {n} film aggiornati con dati TMDB")
+        return
+
+    if args.command == "ingest-cinetel":
+        path = scrape_cinetel(target_date=args.target_date, url=args.url)
+        print(f"Raw dataset Cinetel creato: {path}")
+        return
+
+    if args.command == "sunday-fallback":
+        from .domain.box_office_raw.sunday_fallback import scrape_sunday_fallback
+        from .warehouse.loader import get_connection
+        conn = get_connection()
+        try:
+            path = scrape_sunday_fallback(
+                sunday_date=args.sunday_date,
+                conn=conn,
+                delay=args.delay,
+            )
+        finally:
+            conn.close()
+        if path is None:
+            print(f"Dati Cinetel già presenti per domenica {args.sunday_date} — nessuna azione.")
+        else:
+            print(f"Dataset domenica scritto: {path}")
         return
 
     parser.print_help()

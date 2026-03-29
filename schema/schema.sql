@@ -63,9 +63,11 @@ CREATE TABLE dim_source (
     created_at  TIMESTAMP    NOT NULL DEFAULT NOW()
 );
 
--- Seed record: Cineguru
+-- Seed records
 INSERT INTO dim_source (source_key, name, url, country, is_active)
-VALUES (1, 'Cineguru', 'https://cineguru.screenweek.it', 'IT', TRUE)
+VALUES
+    (1, 'Cineguru', 'https://cineguru.screenweek.it', 'IT', TRUE),
+    (2, 'Cinetel',  'https://www.cinetel.it',          'IT', TRUE)
 ON CONFLICT (source_key) DO NOTHING;
 
 
