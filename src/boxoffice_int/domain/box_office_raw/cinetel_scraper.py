@@ -335,6 +335,7 @@ def scrape_cinetel(
 
     for record in records:
         record["date"] = target_date.isoformat()
+        record["source"] = "CINETEL"
 
     dataframe = pd.DataFrame(records)
     dataframe = dataframe.drop_duplicates(subset=["rank", "title"])

@@ -415,37 +415,80 @@ def parse_article(html: str, article_date: date) -> list[dict]:
             "cinemas": final_cinemas,
             "avg_per_cinema_eur": avg,
             "total_gross_eur": record["total_gross_eur"],
+            "source": "CINEGURU",
         })
 
     return records
 
 
+_MONTH_IT: dict[str, int] = {
+    "gennaio": 1, "febbraio": 2, "marzo": 3, "aprile": 4,
+    "maggio": 5, "giugno": 6, "luglio": 7, "agosto": 8,
+    "settembre": 9, "ottobre": 10, "novembre": 11, "dicembre": 12,
+}
+
+
+def is_weekend_article(href: str) -> bool:
+    """Return True if *href* refers to a Cineguru weekend summary article."""
+    return "fine-settimana" in href.lower()
+
+
+def _extract_sunday_date(href: str) -> date | None:
+    """
+    Extract the Sunday date from a weekend article URL.
+
+    Weekend article slugs contain both the opening day (Thu) and closing day
+    (Sun), e.g. "box-office-del-fine-settimana-12-15-marzo".  We extract the
+    *last* numeric token before the named month as the Sunday date.
+    """
+    matched = re.search(r"/(\d{4})/(\d{2})/(.+)/", href)
+    if not matched:
+        return None
+    year = int(matched.group(1))
+    month = int(matched.group(2))
+    slug = matched.group(3)
+
+    # Override month with named Italian month in slug (e.g. "marzo")
+    named_month = re.search(
+        r"(gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto"
+        r"|settembre|ottobre|novembre|dicembre)",
+        slug, re.I,
+    )
+    if named_month:
+        month = _MONTH_IT[named_month.group(1).lower()]
+
+    # Find all 1-2 digit numbers in slug and take the last one (= Sunday)
+    day_candidates = re.findall(r"(?<![\d])(\d{1,2})(?![\d])", slug)
+    if not day_candidates:
+        return None
+    for candidate in reversed(day_candidates):
+        try:
+            return date(year, month, int(candidate))
+        except ValueError:
+            continue
+    return None
+
+
 def _extract_article_links(html: str) -> list[tuple[str, date]]:
     """
-    Scrape all box-office article links from an archive page.
+    Scrape all *daily* box-office article links from an archive page.
+
+    Weekend aggregate articles (URLs containing "fine-settimana") are
+    intentionally excluded: they aggregate Thu-Sun and are handled
+    separately by the sunday_fallback module.
 
     Parses date from URL slug (numeric day + optional Italian month name).
     Duplicate URLs are deduplicated; unparseable dates are skipped.
     """
     soup = BeautifulSoup(html, "html.parser")
     items: list[tuple[str, date]] = []
-    month_it = {
-        "gennaio": 1,
-        "febbraio": 2,
-        "marzo": 3,
-        "aprile": 4,
-        "maggio": 5,
-        "giugno": 6,
-        "luglio": 7,
-        "agosto": 8,
-        "settembre": 9,
-        "ottobre": 10,
-        "novembre": 11,
-        "dicembre": 12,
-    }
 
     for anchor in soup.find_all("a", href=True):
         href = anchor["href"]
+        # Skip weekend aggregate articles
+        if is_weekend_article(href):
+            continue
+
         matched = re.search(r"/(\d{4})/(\d{2})/(.+box.office.+)/", href, re.I)
         if not matched:
             continue
@@ -457,12 +500,12 @@ def _extract_article_links(html: str) -> list[tuple[str, date]]:
             continue
 
         named_month = re.search(
-            r"(gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto|settembre|ottobre|novembre|dicembre)",
-            slug,
-            re.I,
+            r"(gennaio|febbraio|marzo|aprile|maggio|giugno|luglio|agosto"
+            r"|settembre|ottobre|novembre|dicembre)",
+            slug, re.I,
         )
         if named_month:
-            month = month_it[named_month.group(1).lower()]
+            month = _MONTH_IT[named_month.group(1).lower()]
 
         try:
             items.append((href, date(year, month, int(day_match.group(1)))))

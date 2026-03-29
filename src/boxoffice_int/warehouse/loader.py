@@ -247,6 +247,40 @@ def _resolve_film_key(
 
 
 # ---------------------------------------------------------------------------
+# dim_source helpers
+# ---------------------------------------------------------------------------
+
+# In-process cache: source_name_lower → source_key (populated lazily per run)
+_SOURCE_KEY_CACHE: dict[str, int] = {}
+
+
+def _resolve_source_key(source_name: str, cur) -> int:
+    """
+    Return the source_key for *source_name* by querying dim_source.
+
+    Result is cached in-process for the duration of the Python process
+    (thread-safe for single-threaded use).
+
+    Raises
+    ------
+    ValueError
+        If *source_name* does not exist in dim_source.
+    """
+    key = source_name.strip().lower()
+    if key in _SOURCE_KEY_CACHE:
+        return _SOURCE_KEY_CACHE[key]
+    cur.execute("SELECT source_key FROM dim_source WHERE LOWER(name) = %s", (key,))
+    row = cur.fetchone()
+    if row is None:
+        raise ValueError(
+            f"source_name '{source_name}' non trovata in dim_source. "
+            "Verificare lo schema e il seed."
+        )
+    _SOURCE_KEY_CACHE[key] = row[0]
+    return row[0]
+
+
+# ---------------------------------------------------------------------------
 # Main loader
 # ---------------------------------------------------------------------------
 
@@ -267,7 +301,8 @@ def load_box_office_raw(csv_path: Path, source_key: int = 1) -> int:
     csv_path:
         Path to the raw CSV produced by the ingest step.
     source_key:
-        FK into ``dim_source`` — defaults to 1 (Cineguru).
+        FK into ``dim_source`` — used as fallback when the CSV does not
+        contain a ``source`` column.  Defaults to 1 (Cineguru).
 
     Returns
     -------
@@ -285,11 +320,17 @@ def load_box_office_raw(csv_path: Path, source_key: int = 1) -> int:
     validate(df, contract)
     LOG.info("Loaded %d rows from %s", len(df), csv_path.name)
 
+    # Determine whether the CSV carries a source column
+    has_source_column = "source" in df.columns
+
     conn = get_connection()
     try:
         with conn.cursor() as cur:
             # Build in-memory film cache (all active films)
             film_cache = _fetch_active_films(cur)
+
+            # Pre-resolve source_key if CSV has no source column (backward-compat)
+            resolved_source_key: int = source_key
 
             inserted_count = 0
             for _, row in df.iterrows():
@@ -299,7 +340,13 @@ def load_box_office_raw(csv_path: Path, source_key: int = 1) -> int:
 
                 dk = _date_key(row_date)
 
-                # -- 2. Resolve film key ---------------------------------
+                # -- 2. Resolve source key --------------------------------
+                if has_source_column and not pd.isna(row.get("source")):
+                    resolved_source_key = _resolve_source_key(str(row["source"]), cur)
+                else:
+                    resolved_source_key = source_key
+
+                # -- 3. Resolve film key ---------------------------------
                 film_key = _resolve_film_key(
                     title=str(row["title"]),
                     cache=film_cache,
@@ -307,7 +354,7 @@ def load_box_office_raw(csv_path: Path, source_key: int = 1) -> int:
                     valid_from=row_date,
                 )
 
-                # -- 3. Insert fact row (idempotent) ---------------------
+                # -- 4. Insert fact row (idempotent) ---------------------
                 cur.execute(
                     """
                     INSERT INTO fact_box_office_daily (
@@ -321,7 +368,7 @@ def load_box_office_raw(csv_path: Path, source_key: int = 1) -> int:
                     (
                         dk,
                         film_key,
-                        source_key,
+                        resolved_source_key,
                         int(row["rank"]),
                         int(row["gross_eur"]),
                         None if pd.isna(row.get("admissions")) else int(row["admissions"]),
