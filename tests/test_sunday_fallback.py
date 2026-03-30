@@ -33,11 +33,14 @@ from boxoffice_int.domain.box_office_raw.sunday_fallback import (
 FIXTURES_DIR = Path(__file__).parent / "fixtures"
 WEEKEND_HTML = (FIXTURES_DIR / "fine_settimana_article.html").read_text(encoding="utf-8")
 
-# URL di esempio per articoli fine-settimana (usano "fine-settimana" nel slug)
+# URL di esempio per articoli fine-settimana (due slug diversi usati da Cineguru)
 _WEEKEND_URLS = [
+    # formato storico
     "https://cineguru.screenweek.it/2026/03/15/box-office-del-fine-settimana-12-15-marzo/",
     "https://cineguru.screenweek.it/2026/03/22/classifica-fine-settimana-19-22-marzo/",
     "https://cineguru.screenweek.it/2026/01/18/incassi-fine-settimana-15-18-gennaio/",
+    # formato "week-end" (osservato dal 2026-03-29)
+    "https://cineguru.screenweek.it/2026/03/lultima-missione-si-ripete-e-guida-il-box-office-del-week-end-26-29-marzo-49417/",
 ]
 
 _DAILY_URLS = [
@@ -60,9 +63,14 @@ class TestIsWeekendArticle:
     def test_ignores_daily_urls(self, url: str):
         assert is_weekend_article(url) is False
 
-    def test_case_insensitive(self):
+    def test_case_insensitive_fine_settimana(self):
         assert is_weekend_article(
             "https://cineguru.screenweek.it/2026/03/15/BOX-OFFICE-FINE-SETTIMANA-12-15-MARZO/"
+        ) is True
+
+    def test_case_insensitive_week_end(self):
+        assert is_weekend_article(
+            "https://cineguru.screenweek.it/2026/03/BOX-OFFICE-WEEK-END-26-29-MARZO-49417/"
         ) is True
 
 
@@ -87,6 +95,11 @@ class TestExtractSundayDate:
         url = "https://cineguru.screenweek.it/2026/03/15/fine-settimana-12-15-marzo/"
         result = _extract_sunday_date(url)
         assert result == date(2026, 3, 15)
+
+    def test_extracts_sunday_from_week_end_slug(self):
+        # Formato reale osservato dal 2026-03-29: slug "week-end" con ID numerico finale
+        url = "https://cineguru.screenweek.it/2026/03/lultima-missione-si-ripete-e-guida-il-box-office-del-week-end-26-29-marzo-49417/"
+        assert _extract_sunday_date(url) == date(2026, 3, 29)
 
 
 # ---------------------------------------------------------------------------

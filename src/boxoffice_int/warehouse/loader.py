@@ -465,3 +465,163 @@ def update_film_distributor(
         film_key, new_key, new_distributor_key, change_date,
     )
     return new_key
+
+
+# ---------------------------------------------------------------------------
+# Cinetel fallback log
+# ---------------------------------------------------------------------------
+
+def log_cinetel_fallback(
+    target_date: date,
+    conn: psycopg2.extensions.connection,
+    notes: str | None = None,
+) -> None:
+    """
+    Record that *target_date* was ingested from Cinetel as a fallback
+    (Cineguru unavailable → cinemas field will be NULL).
+
+    Idempotent: a second call for the same date does nothing.
+    """
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            INSERT INTO cinetel_fallback_log (log_date, notes)
+            VALUES (%s, %s)
+            ON CONFLICT (log_date) DO NOTHING
+            """,
+            (target_date, notes),
+        )
+    conn.commit()
+    LOG.info("cinetel_fallback_log: %s registrato", target_date)
+
+
+def get_pending_fallback_dates(
+    conn: psycopg2.extensions.connection,
+) -> list[date]:
+    """Return dates from cinetel_fallback_log where resolved_at IS NULL."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "SELECT log_date FROM cinetel_fallback_log WHERE resolved_at IS NULL ORDER BY log_date"
+        )
+        return [row[0] for row in cur.fetchall()]
+
+
+def mark_fallback_resolved(
+    target_date: date,
+    conn: psycopg2.extensions.connection,
+) -> None:
+    """Set resolved_at = NOW() for *target_date* in cinetel_fallback_log."""
+    with conn.cursor() as cur:
+        cur.execute(
+            "UPDATE cinetel_fallback_log SET resolved_at = NOW() WHERE log_date = %s",
+            (target_date,),
+        )
+    conn.commit()
+    LOG.info("cinetel_fallback_log: %s segnato come risolto", target_date)
+
+
+def backfill_cinemas_for_date(
+    target_date: date,
+    cineguru_csv_path: Path,
+    conn: psycopg2.extensions.connection,
+    fuzzy_threshold: int = 85,
+) -> int:
+    """
+    Backfill the cinemas column in fact_box_office_daily for *target_date*
+    using data from a Cineguru CSV covering the same date.
+
+    For each Cinetel row on *target_date* where cinemas IS NULL, perform a
+    fuzzy title match against the Cineguru CSV and update cinemas and
+    avg_per_cinema_eur.
+
+    Does NOT mark the fallback as resolved — the caller is responsible.
+
+    Returns
+    -------
+    int
+        Number of fact rows updated.
+    """
+    cineguru_csv_path = Path(cineguru_csv_path)
+    df = pd.read_csv(cineguru_csv_path)
+    contract = load_contract("box-office-raw-daily")
+    df = cast_to_contract(df, contract)
+    validate(df, contract)
+
+    date_rows = df[df["date"] == pd.Timestamp(target_date)]
+    if date_rows.empty:
+        LOG.warning(
+            "backfill_cinemas: nessun record per %s in %s",
+            target_date, cineguru_csv_path.name,
+        )
+        return 0
+
+    # Build a lookup {title_lower: row} from Cineguru data
+    cineguru_lookup: dict[str, object] = {
+        str(r["title"]).lower(): r for _, r in date_rows.iterrows()
+    }
+
+    date_key = _date_key(target_date)
+    updated = 0
+
+    with conn.cursor() as cur:
+        cur.execute(
+            """
+            SELECT f.film_key, df.title_cineguru
+            FROM   fact_box_office_daily f
+            JOIN   dim_film   df ON df.film_key   = f.film_key
+            JOIN   dim_source s  ON s.source_key  = f.source_key
+            WHERE  f.date_key = %s
+              AND  s.name     = 'Cinetel'
+              AND  f.cinemas  IS NULL
+            """,
+            (date_key,),
+        )
+        cinetel_rows = cur.fetchall()  # [(film_key, title), ...]
+
+        for film_key, cinetel_title in cinetel_rows:
+            match = process.extractOne(
+                cinetel_title.lower(),
+                cineguru_lookup.keys(),
+                scorer=fuzz.token_set_ratio,
+                score_cutoff=fuzzy_threshold,
+            )
+            if not match:
+                LOG.warning(
+                    "backfill_cinemas: nessun match per '%s' il %s",
+                    cinetel_title, target_date,
+                )
+                continue
+
+            matched_key = match[0]
+            row = cineguru_lookup[matched_key]
+            cinemas = None if pd.isna(row.get("cinemas")) else int(row["cinemas"])
+            if cinemas is None:
+                LOG.warning(
+                    "backfill_cinemas: '%s' trovato in Cineguru ma cinemas=None",
+                    cinetel_title,
+                )
+                continue
+
+            gross_eur = None if pd.isna(row.get("gross_eur")) else int(row["gross_eur"])
+            avg = (gross_eur // cinemas) if (gross_eur and cinemas) else None
+
+            cur.execute(
+                """
+                UPDATE fact_box_office_daily
+                SET    cinemas = %s, avg_per_cinema_eur = %s
+                WHERE  date_key = %s AND film_key = %s
+                """,
+                (cinemas, avg, date_key, film_key),
+            )
+            if cur.rowcount:
+                updated += 1
+                LOG.debug(
+                    "backfill_cinemas: '%s' → cinemas=%d", cinetel_title, cinemas
+                )
+
+    conn.commit()
+    LOG.info(
+        "backfill_cinemas: %d/%d righe aggiornate per %s",
+        updated, len(cinetel_rows), target_date,
+    )
+    return updated

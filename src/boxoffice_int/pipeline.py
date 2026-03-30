@@ -104,6 +104,18 @@ def _build_parser() -> argparse.ArgumentParser:
     sunday_fb.add_argument("--delay", type=float, default=2.0,
                            help="Delay richieste Cineguru (secondi, default: 2.0)")
 
+    # --- backfill-cinemas: backfilla la colonna cinemas per i giorni con fallback Cinetel ---
+    backfill = sub.add_parser(
+        "backfill-cinemas",
+        help="Backfilla cinemas nei record Cinetel usando Cineguru (per i giorni in cinetel_fallback_log)",
+    )
+    backfill.add_argument(
+        "--date", type=date.fromisoformat, default=None, dest="backfill_date",
+        help="Backfilla solo questa data (YYYY-MM-DD); se omesso, processa tutti i pendenti",
+    )
+    backfill.add_argument("--delay", type=float, default=2.0,
+                          help="Delay richieste Cineguru (secondi, default: 2.0)")
+
     return parser
 
 
@@ -138,6 +150,14 @@ def main() -> None:
             log.warning("Cineguru non disponibile (%s) — fallback su Cinetel: %s", exc, args.cinetel_url)
             path = scrape_cinetel(target_date=start, url=args.cinetel_url)
             print(f"Raw dataset creato (fallback Cinetel): {path}")
+            # Registra il giorno nel fallback log così può essere backfillato in seguito
+            try:
+                from .warehouse.loader import get_connection, log_cinetel_fallback
+                _conn = get_connection()
+                log_cinetel_fallback(start, _conn)
+                _conn.close()
+            except Exception as _log_exc:
+                log.warning("Impossibile scrivere cinetel_fallback_log: %s", _log_exc)
         return
 
     if args.command == "enrich":
@@ -192,6 +212,61 @@ def main() -> None:
             print(f"Dati Cinetel già presenti per domenica {args.sunday_date} — nessuna azione.")
         else:
             print(f"Dataset domenica scritto: {path}")
+        return
+
+    if args.command == "backfill-cinemas":
+        from .domain.box_office_raw.cineguru_scraper import scrape_cineguru
+        from .warehouse.loader import (
+            get_connection,
+            get_pending_fallback_dates,
+            backfill_cinemas_for_date,
+            load_box_office_raw,
+            mark_fallback_resolved,
+        )
+        log = logging.getLogger(__name__)
+        conn = get_connection()
+        try:
+            if args.backfill_date is not None:
+                pending = [args.backfill_date]
+            else:
+                pending = get_pending_fallback_dates(conn)
+
+            if not pending:
+                print("Nessun giorno pendente in cinetel_fallback_log.")
+                return
+
+            print(f"{len(pending)} giorn{'o' if len(pending)==1 else 'i'} da backfillare: "
+                  f"{', '.join(str(d) for d in pending)}")
+
+            resolved = 0
+            for target_date in pending:
+                log.info("Backfill cinemas per %s — scraping Cineguru…", target_date)
+                try:
+                    csv_path = scrape_cineguru(
+                        start=target_date, end=target_date, delay=args.delay
+                    )
+                except RuntimeError as exc:
+                    log.warning(
+                        "Cineguru non disponibile per %s (%s) — salto", target_date, exc
+                    )
+                    continue
+
+                # Carica le righe Cineguru nel fatto (idempotente)
+                load_box_office_raw(csv_path=csv_path)
+
+                # Aggiorna cinemas sulle righe Cinetel esistenti
+                n = backfill_cinemas_for_date(
+                    target_date=target_date,
+                    cineguru_csv_path=csv_path,
+                    conn=conn,
+                )
+                mark_fallback_resolved(target_date, conn)
+                resolved += 1
+                print(f"  {target_date}: {n} righe Cinetel aggiornate con cinemas — risolto")
+
+            print(f"\nBackfill completato: {resolved}/{len(pending)} giorni risolti.")
+        finally:
+            conn.close()
         return
 
     parser.print_help()

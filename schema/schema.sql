@@ -7,6 +7,7 @@
 -- ============================================================
 
 -- ---- Teardown (reverse dependency order) -------------------
+DROP TABLE IF EXISTS cinetel_fallback_log   CASCADE;
 DROP TABLE IF EXISTS fact_box_office_daily  CASCADE;
 DROP TABLE IF EXISTS bridge_film_genre      CASCADE;
 DROP TABLE IF EXISTS dim_film               CASCADE;
@@ -191,3 +192,25 @@ COMMENT ON COLUMN fact_box_office_daily.rank IS
 -- Supporting indexes for common BI query patterns
 CREATE INDEX fact_bo_date  ON fact_box_office_daily (date_key);
 CREATE INDEX fact_bo_film  ON fact_box_office_daily (film_key);
+
+
+-- ============================================================
+--  8. cinetel_fallback_log
+--
+--  Tracks every day that was ingested from Cinetel as a fallback
+--  (i.e. Cineguru was unavailable). These dates are missing the
+--  `cinemas` field, which is only available from Cineguru.
+--
+--  resolved_at is NULL until the cinemas column has been
+--  backfilled for that date (via the `backfill-cinemas` command).
+-- ============================================================
+DROP TABLE IF EXISTS cinetel_fallback_log;
+CREATE TABLE cinetel_fallback_log (
+    log_date      DATE        PRIMARY KEY,
+    created_at    TIMESTAMP   NOT NULL DEFAULT NOW(),
+    resolved_at   TIMESTAMP,                    -- NULL = cinemas non ancora backfillati
+    notes         TEXT
+);
+
+COMMENT ON TABLE cinetel_fallback_log IS
+    'Dates ingested via Cinetel fallback. cinemas is NULL until backfill-cinemas resolves them.';

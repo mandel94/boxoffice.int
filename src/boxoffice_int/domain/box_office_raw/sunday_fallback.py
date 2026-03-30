@@ -411,6 +411,17 @@ def scrape_sunday_fallback(
     df = pd.DataFrame(sunday_records)
     df = df.sort_values("rank").reset_index(drop=True)
 
+    # Gli articoli fine-settimana possono includere film oltre la top 10.
+    # Manteniamo solo rank 1-10 per rispettare il contratto e il DB.
+    out_of_top10 = df[df["rank"] > 10]
+    if not out_of_top10.empty:
+        LOG.info(
+            "  Rimossi %d record con rank > 10: %s",
+            len(out_of_top10),
+            out_of_top10["title"].tolist(),
+        )
+    df = df[df["rank"] <= 10].reset_index(drop=True)
+
     contract = load_contract("box-office-raw-daily")
     df = cast_to_contract(df, contract)
     try:

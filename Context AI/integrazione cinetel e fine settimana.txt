@@ -1,0 +1,42 @@
+Implementa la gestione degli articoli di fine settimana nello scraper Cineguru.
+
+## Schema Database (Layer Raw)
+La tabella di staging raw_box_office deve includere una colonna `source`
+(valori: CINETEL, CINEGURU) e i vincoli di unicità devono permettere più record
+per lo stesso film nella stessa data, uno per fonte.
+
+## Routine di Acquisizione Quotidiana (Dual Ingest)
+Ogni giorno lo scraper esegue due operazioni in parallelo:
+- Fetch Cinetel: bollettino ufficiale → raw_box_office con source='CINETEL'
+- Fetch Cineguru: parsing articolo giornaliero → raw_box_office con source='CINEGURU'
+Questo garantisce che il DB contenga sempre entrambi i set per i giorni feriali
+(giovedì, venerdì, sabato inclusi).
+
+## Riconoscimento URL Weekend
+Gli articoli weekend hanno URL contenente "fine-settimana".
+Giovedì, venerdì e sabato hanno bollettini giornalieri propri già gestiti.
+L'unico giorno da ricostruire è la domenica.
+
+## Logica Domenica — Fonte Primaria (Cinetel)
+Verificare se esistono record domenica con source='CINETEL' in raw_box_office.
+Se presenti, promuoverli direttamente in fact_box_office_daily senza ulteriori
+operazioni.
+
+## Logica Domenica — Fallback (Cineguru Weekend)
+Se Cinetel è assente per la domenica, attivare il parsing dell'articolo
+"fine-settimana" di Cineguru, che aggrega i dati da giovedì a domenica.
+In questo caso:
+- Recuperare dal DB i valori consolidati di giovedì, venerdì e sabato
+- Calcolare: domenica = totale_weekend – (giovedì + venerdì + sabato)
+- Clonare il numero di cinema della domenica dal record del sabato in DB
+
+## Parsing HTML Weekend (Pattern Strategy)
+Leggere fine_settimana_box_office_body_tag.html per identificare la struttura
+e adattare i selettori per estrarre il totale aggregato Thu-Sun.
+Applicare il pattern Strategy per autore già in uso per i giorni feriali.
+I nomi autore vanno hashati con SHA-256[:16] come da convenzione del progetto.
+
+## Output
+In entrambi i casi il record domenica deve essere identico per struttura e
+campi a quelli dei giorni feriali, compatibile con lo schema di
+fact_box_office_daily.

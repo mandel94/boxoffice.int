@@ -429,8 +429,14 @@ _MONTH_IT: dict[str, int] = {
 
 
 def is_weekend_article(href: str) -> bool:
-    """Return True if *href* refers to a Cineguru weekend summary article."""
-    return "fine-settimana" in href.lower()
+    """Return True if *href* refers to a Cineguru weekend summary article.
+
+    Matches both slug variants used by Cineguru:
+    - ``fine-settimana`` (historic format)
+    - ``week-end``        (format observed from 2026-03-29 onward)
+    """
+    href_lower = href.lower()
+    return "fine-settimana" in href_lower or "week-end" in href_lower
 
 
 def _extract_sunday_date(href: str) -> date | None:
