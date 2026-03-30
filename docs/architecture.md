@@ -37,9 +37,10 @@ Contracts are in `contracts/` and define:
 
 ## 5. Pipeline lineage
 
-1. Cineguru Scraper → `box_office_raw`
-2. TMDB Enrichment → `film_metadata`
-3. Join + KPIs → `market_analytics`
+1. Cineguru Scraper → `box_office_raw` (primary source)
+2. Cinetel Scraper → `box_office_raw` (fallback when Cineguru article not yet published)
+3. TMDB Enrichment → `film_metadata`
+4. Join + KPIs → `market_analytics`
 
 ## 6. Minimum quality gates
 
@@ -50,7 +51,7 @@ Contracts are in `contracts/` and define:
 
 ## 7. Industrialization roadmap
 
-- Daily scheduler
+- Daily scheduler ✓ (GitHub Actions, every day at 23:00 UTC)
 - Retry policy and alerting
 - Observability (structured logs, metrics)
 - Automated data quality tests

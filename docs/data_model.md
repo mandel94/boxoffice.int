@@ -18,7 +18,7 @@ The data platform is organized around **three autonomous domains**, each with ex
 
 | Domain | Responsibility | Output | Layer |
 |--------|-----------------|--------|-------|
-| **box_office_raw** | Ingest, parse, quality check | Daily top-10 box office from Cineguru | Raw |
+| **box_office_raw** | Ingest, parse, quality check | Daily top-10 box office from Cineguru (primary) or Cinetel (fallback) | Raw |
 | **film_metadata** | Normalize titles, enrich via TMDB API | Normalized film attributes (genres, release dates, etc.) | Curated |
 | **market_analytics** | Aggregate KPIs, join enriched data | Daily analytics fact and KPI aggregations | Products |
 

@@ -2,7 +2,7 @@ name: Daily Box Office Pipeline
 
 on:
   schedule:
-    - cron: "0 9 * * 2"   # ogni martedì alle 09:00 UTC (Cineguru pubblica il lunedì sera)
+    - cron: "0 23 * * *"  # ogni giorno alle 23:00 UTC = mezzanotte ora italiana
   workflow_dispatch:        # trigger manuale per backfill o test
 
 jobs:

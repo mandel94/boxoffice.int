@@ -22,7 +22,7 @@ from pathlib import Path
 from typing import Any
 
 import pandas as pd
-import pandera as pa
+import pandera.pandas as pa
 import yaml
 
 LOG = logging.getLogger(__name__)

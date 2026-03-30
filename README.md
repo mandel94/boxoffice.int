@@ -51,6 +51,17 @@ boxoffice-int ingest --start 2026-01-01 --end 2026-01-31
 
 Output: `data/raw/box_office_raw/cineguru_2026-01-01_2026-01-31.csv`
 
+**Cinetel fallback** — if Cineguru has not yet published the article for a given day, pass `--cinetel-url` with the Cinetel homepage URL and the pipeline will automatically fall back to scraping Cinetel for that date:
+
+```bash
+boxoffice-int ingest --start 2026-03-30 --end 2026-03-30 \
+  --cinetel-url "https://www.cinetel.it/homepage"
+```
+
+Output: `data/raw/box_office_raw/cinetel_2026-03-30.csv`
+
+> The Cinetel fallback is only supported for single-day ranges.
+
 ### 2. TMDB metadata enrichment
 
 ```bash
@@ -135,5 +146,12 @@ docs/
 
 ## CI / orchestration
 
-The `.github/workflows/daily_pipeline.yml` workflow runs every day at 08:00 UTC:
-`test → ingest → enrich → build`. Configure the `TMDB_API_KEY` secret in the GitHub repository.
+The `.github/workflows/daily_pipeline.yml` workflow runs **every day at 23:00 UTC** (midnight Italian time):
+`test → ingest → load → enrich-db → enrich → build`.
+
+Required secrets in the GitHub repository:
+
+| Secret | Used by |
+|---|---|
+| `TMDB_API_KEY` | `enrich`, `enrich-db` steps |
+| `BOXOFFICE_DB_URL` | `load`, `enrich-db` steps |

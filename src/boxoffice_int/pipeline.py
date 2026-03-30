@@ -61,6 +61,8 @@ def _build_parser() -> argparse.ArgumentParser:
     presets_group.add_argument("--last-month",  action="store_true", help="Mese scorso completo")
 
     ingest.add_argument("--delay", type=float, default=2.0, help="Delay richieste (secondi)")
+    ingest.add_argument("--cinetel-url", type=str, default=None, dest="cinetel_url",
+                        help="URL Cinetel di fallback se Cineguru non pubblica il bollettino")
 
     enrich = sub.add_parser("enrich", help="Arricchimento metadati TMDB")
     enrich.add_argument("--input", type=Path, required=True, help="CSV raw box office")
@@ -121,9 +123,21 @@ def main() -> None:
         if not using_preset and (args.start is None or args.end is None):
             parser.error("ingest: specifica --start/--end oppure uno shortcut (--yesterday, --this-week, …)")
         start, end = _resolve_range(args, date.today())
-        logging.getLogger(__name__).info("Range selezionato: %s → %s", start, end)
-        path = scrape_cineguru(start=start, end=end, delay=args.delay)
-        print(f"Raw dataset creato: {path}")
+        log = logging.getLogger(__name__)
+        log.info("Range selezionato: %s → %s", start, end)
+        try:
+            path = scrape_cineguru(start=start, end=end, delay=args.delay)
+            print(f"Raw dataset creato: {path}")
+        except RuntimeError as exc:
+            if args.cinetel_url is None:
+                raise
+            if start != end:
+                raise RuntimeError(
+                    "Fallback Cinetel disponibile solo per range di un giorno singolo"
+                ) from exc
+            log.warning("Cineguru non disponibile (%s) — fallback su Cinetel: %s", exc, args.cinetel_url)
+            path = scrape_cinetel(target_date=start, url=args.cinetel_url)
+            print(f"Raw dataset creato (fallback Cinetel): {path}")
         return
 
     if args.command == "enrich":
