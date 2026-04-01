@@ -227,9 +227,13 @@ def _normalize_title_for_matching(title: str) -> str:
     """Normalize title for matching between paragraphs and top 10."""
     if not title:
         return ""
-    # Remove extra whitespace, convert to lowercase, remove common punctuation
+    # Remove extra whitespace, convert to lowercase, remove common punctuation.
+    # The second \s+ collapse is intentional: removing a dash surrounded by spaces
+    # (e.g. "missione – Project") leaves a double space; collapsing again ensures
+    # "missione  Project" == "missione Project" when the top-10 uses a colon instead.
     normalized = re.sub(r"\s+", " ", title.strip().lower())
     normalized = re.sub(r"[–\-—:;.,!?]", "", normalized)
+    normalized = re.sub(r"\s+", " ", normalized).strip()
     return normalized
 
 

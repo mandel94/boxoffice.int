@@ -215,7 +215,6 @@ def main() -> None:
         return
 
     if args.command == "backfill-cinemas":
-        from .domain.box_office_raw.cineguru_scraper import scrape_cineguru
         from .warehouse.loader import (
             get_connection,
             get_pending_fallback_dates,

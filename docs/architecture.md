@@ -37,10 +37,25 @@ Contracts are in `contracts/` and define:
 
 ## 5. Pipeline lineage
 
-1. Cineguru Scraper → `box_office_raw` (primary source)
-2. Cinetel Scraper → `box_office_raw` (fallback when Cineguru article not yet published)
-3. TMDB Enrichment → `film_metadata`
-4. Join + KPIs → `market_analytics`
+### Ingestion paths
+
+| Command | Source | Output file |
+|---|---|---|
+| `ingest --start … --end …` | Cineguru HTML | `cineguru_<start>_<end>.csv` |
+| `ingest … --cinetel-url …` | Cinetel (auto-fallback) | `cinetel_<date>.csv` |
+| `ingest-cinetel --date … --url …` | Cinetel (direct) | `cinetel_<date>.csv` |
+| `sunday-fallback --date …` | Cineguru weekend article diff | `cineguru_sunday_<date>.csv` |
+
+### Full pipeline (daily)
+
+1. **ingest** (Cineguru) → `box_office_raw`
+2. **ingest-cinetel** (Cinetel, fallback or direct) → `box_office_raw`
+3. **sunday-fallback** → fills missing Sunday rows from weekend diff
+4. **backfill-cinemas** → fills `cinemas` for Cinetel-sourced days
+5. **load** → `fact_box_office_daily` in Neon (star schema)
+6. **enrich** (CSV) / **enrich-db** (Neon) → `film_metadata` via TMDB
+7. **build** → `market_analytics` (Parquet, BI consumption)
+8. **seed** → `dim_date` population (idempotent, run once)
 
 ## 6. Minimum quality gates
 

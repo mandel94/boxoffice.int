@@ -19,6 +19,7 @@ from boxoffice_int.domain.box_office_raw.cineguru_scraper import (
     _clean_number,
     _detect_author_hash,
     _get_parsing_patterns,
+    _normalize_title_for_matching,
     _parse_entry_line,
     parse_article,
 )
@@ -231,3 +232,20 @@ class TestParseArticleNuovoAutore:
         r = records[0]
         if r["gross_eur"] and r["cinemas"]:
             assert r["avg_per_cinema_eur"] == r["gross_eur"] // r["cinemas"]
+
+
+# ---------------------------------------------------------------------------
+# _normalize_title_for_matching — double-space regression
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize("a,b", [
+    # En-dash in paragraph title vs colon in top-10 title
+    ("L'ultima missione – Project Hail Mary", "L'ultima missione: Project Hail Mary"),
+    # Em-dash vs colon
+    ("Jumpers — Un salto tra gli animali", "Jumpers: Un salto tra gli animali"),
+    # Hyphen-minus in paragraph vs plain in top-10
+    ("Un film - Un sottotitolo", "Un film Un sottotitolo"),
+])
+def test_normalize_title_dash_variants_match(a, b):
+    """Titles differing only in dash/colon style must normalize to the same string."""
+    assert _normalize_title_for_matching(a) == _normalize_title_for_matching(b)
