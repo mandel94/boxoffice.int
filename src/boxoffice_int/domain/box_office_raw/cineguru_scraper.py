@@ -2,6 +2,7 @@ import hashlib
 import logging
 import re
 import time
+from difflib import SequenceMatcher
 from datetime import date
 from pathlib import Path
 
@@ -215,7 +216,8 @@ def _extract_fuzzy_numbers(text: str, author: str | None = None) -> dict[str, in
         result["euro"] = _clean_number(euro_match.group(1))
 
     # Extract number immediately before cinema/sala/sale keywords (fuzzy matching)
-    cinema_pattern = r"([\d.,]+)\s*(?:cinema|sala|sale)(?:\s|$|[.,;])"
+    # Require at least one digit to avoid false matches like ", sale di un gradino".
+    cinema_pattern = r"(\d[\d.,]*)\s*(?:cinema|sala|sale)\b"
     cinema_match = re.search(cinema_pattern, text, re.IGNORECASE)
     if cinema_match:
         result["cinemas"] = _clean_number(cinema_match.group(1))
@@ -243,6 +245,8 @@ def _match_paragraph_to_top10(paragraph_title: str, top10_records: list[dict]) -
         return None
 
     normalized_para_title = _normalize_title_for_matching(paragraph_title)
+    best_record = None
+    best_score = 0.0
 
     for record in top10_records:
         normalized_record_title = _normalize_title_for_matching(record["title"])
@@ -256,6 +260,14 @@ def _match_paragraph_to_top10(paragraph_title: str, top10_records: list[dict]) -
             normalized_record_title in normalized_para_title):
             return record
 
+        # Fuzzy fallback for minor editorial title variations (e.g. "figlio" vs "cielo").
+        similarity = SequenceMatcher(None, normalized_para_title, normalized_record_title).ratio()
+        if similarity > best_score:
+            best_score = similarity
+            best_record = record
+
+    if best_record and best_score >= 0.85:
+        return best_record
     return None
 
 

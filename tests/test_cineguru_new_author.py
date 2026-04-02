@@ -18,7 +18,9 @@ from boxoffice_int.domain.box_office_raw.cineguru_scraper import (
     RE_ENTRY_LOOSE_693AE5DE70C3EA16,
     _clean_number,
     _detect_author_hash,
+    _extract_fuzzy_numbers,
     _get_parsing_patterns,
+    _match_paragraph_to_top10,
     _normalize_title_for_matching,
     _parse_entry_line,
     parse_article,
@@ -249,3 +251,25 @@ class TestParseArticleNuovoAutore:
 def test_normalize_title_dash_variants_match(a, b):
     """Titles differing only in dash/colon style must normalize to the same string."""
     assert _normalize_title_for_matching(a) == _normalize_title_for_matching(b)
+
+
+def test_extract_fuzzy_numbers_ignores_sale_verb_and_reads_cinemas_count():
+    text = (
+        "Completa il podio Jumpers - Un salto tra gli animali. "
+        "Il film sfrutta il sabato, sale di un gradino e incassa 116.577 euro (-58%) "
+        "con una media di 339 euro in 344 cinema (480) per un totale di 4.679.650 euro."
+    )
+    numbers = _extract_fuzzy_numbers(text)
+    assert numbers["euro"] == 116577
+    assert numbers["cinemas"] == 344
+
+
+def test_match_paragraph_to_top10_handles_minor_title_variations():
+    paragraph_title = "Hamnet - Nel nome del figlio"
+    top10 = [
+        {"rank": 9, "title": "Ti uccideranno"},
+        {"rank": 10, "title": "Hamnet - Nel nome del cielo"},
+    ]
+    matched = _match_paragraph_to_top10(paragraph_title, top10)
+    assert matched is not None
+    assert matched["rank"] == 10
