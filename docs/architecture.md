@@ -42,6 +42,7 @@ Contracts are in `contracts/` and define:
 | Command | Source | Output file |
 |---|---|---|
 | `ingest --start … --end …` | Cineguru HTML | `cineguru_<start>_<end>.csv` |
+| `ingest-date --date …` | Cineguru HTML (weekday) or weekend aggregate (Sun) | `cineguru_YYYY-MM-DD_YYYY-MM-DD.csv` or `cineguru_sunday_<date>.csv` |
 | `ingest … --cinetel-url …` | Cinetel (auto-fallback) | `cinetel_<date>.csv` |
 | `ingest-cinetel --date … --url …` | Cinetel (direct) | `cinetel_<date>.csv` |
 | `sunday-fallback --date …` | Cineguru weekend article diff | `cineguru_sunday_<date>.csv` |

@@ -78,7 +78,39 @@ Output: `data/raw/box_office_raw/cinetel_2026-03-30.csv`
 
 ---
 
-### 2. `ingest-cinetel` — Direct Cinetel scraping
+### 2. `ingest-date` — Single-date ingestion (auto-routes weekends)
+
+Simplified interface for ingesting a single date. Automatically handles weekends:
+
+- **Weekday (Mon–Fri)**: scrapes Cineguru daily article
+- **Saturday**: redirects you to scrape the Sunday (when weekend aggregate is published)
+- **Sunday**: auto-routes to `sunday-fallback` to compute weekend data
+
+```bash
+# Weekday — scrapes Cineguru daily
+boxoffice-int ingest-date --date 2026-04-02
+
+# Saturday — shows helpful message directing to Sunday
+boxoffice-int ingest-date --date 2026-04-04
+# Output: "2026-04-04 è un sabato — i dati del fine-settimana si estraggono dalla domenica. Esegui: boxoffice-int ingest-date --date 2026-04-05"
+
+# Sunday — auto-routes to sunday-fallback for weekend aggregate
+boxoffice-int ingest-date --date 2026-03-29
+```
+
+Supports `--delay` and `--cinetel-url` (for weekday Cinetel fallback):
+
+```bash
+boxoffice-int ingest-date --date 2026-04-02 --delay 1.0 \
+  --cinetel-url "https://www.cinetel.it/homepage"
+```
+
+Output: `data/raw/box_office_raw/cineguru_YYYY-MM-DD_YYYY-MM-DD.csv` (weekday) or
+`data/raw/box_office_raw/cineguru_sunday_YYYY-MM-DD.csv` (Sunday)
+
+---
+
+### 3. `ingest-cinetel` — Direct Cinetel scraping
 
 Use this command to scrape Cinetel directly without going through the Cineguru flow.
 
@@ -92,7 +124,7 @@ Output: `data/raw/box_office_raw/cinetel_2026-04-01.csv`
 
 ---
 
-### 3. `sunday-fallback` — Reconstruct missing Sunday
+### 4. `sunday-fallback` — Reconstruct missing Sunday
 
 Computes Sunday data by subtracting Friday+Saturday Cinetel figures from the weekend
 total published in the Cineguru weekend article. Requires DB access.
@@ -105,7 +137,7 @@ Output: `data/raw/box_office_raw/cineguru_sunday_2026-03-29.csv`
 
 ---
 
-### 4. `backfill-cinemas` — Backfill cinema count for Cinetel fallback days
+### 5. `backfill-cinemas` — Backfill cinema count for Cinetel fallback days
 
 Re-scrapes Cineguru to fill the `cinemas` column for days that were originally ingested
 via Cinetel (which does not expose cinema count). Processes all pending dates from
@@ -121,7 +153,7 @@ boxoffice-int backfill-cinemas --date 2026-03-30
 
 ---
 
-### 5. `load` — Load raw CSV into Neon (star schema)
+### 6. `load` — Load raw CSV into Neon (star schema)
 
 ```bash
 boxoffice-int load \
@@ -137,7 +169,7 @@ Inserts into `fact_box_office_daily`. Default `--source-key 1` (Cineguru).
 
 ---
 
-### 6. `enrich` — TMDB metadata enrichment (CSV)
+### 7. `enrich` — TMDB metadata enrichment (CSV)
 
 ```bash
 boxoffice-int enrich \
@@ -148,7 +180,7 @@ Output: `data/curated/film_metadata/film_metadata.csv`
 
 ---
 
-### 7. `enrich-db` — TMDB enrichment of `dim_film` rows in Neon
+### 8. `enrich-db` — TMDB enrichment of `dim_film` rows in Neon
 
 Enriches only rows in `dim_film` that still have no `tmdb_id`.
 
@@ -158,7 +190,7 @@ boxoffice-int enrich-db --delay 1.0
 
 ---
 
-### 8. `build` — Build analytics data product
+### 9. `build` — Build analytics data product
 
 ```bash
 boxoffice-int build \
