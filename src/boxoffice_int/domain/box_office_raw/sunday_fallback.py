@@ -208,17 +208,24 @@ def _fetch_thu_fri_sat_rows(sunday_date: date, conn) -> list[dict]:
     """
     thu = _prev_thursday(sunday_date)
     sat = sunday_date - timedelta(days=1)
+    fri = thu + timedelta(days=1)
 
     date_keys = [
         thu.year * 10000 + thu.month * 100 + thu.day,
-        (thu + timedelta(days=1)).year * 10000 + (thu + timedelta(days=1)).month * 100 + (thu + timedelta(days=1)).day,
+        fri.year * 10000 + fri.month * 100 + fri.day,
         sat.year * 10000 + sat.month * 100 + sat.day,
     ]
     dates_map = {
         thu.year * 10000 + thu.month * 100 + thu.day:           thu,
-        (thu + timedelta(days=1)).year * 10000 + (thu + timedelta(days=1)).month * 100 + (thu + timedelta(days=1)).day: thu + timedelta(days=1),
+        fri.year * 10000 + fri.month * 100 + fri.day: fri,
         sat.year * 10000 + sat.month * 100 + sat.day:           sat,
     }
+
+    LOG.debug(
+        "Recupero dati feriali per settimana che chiude con %s: "
+        "giovedì=%s, venerdì=%s, sabato=%s (date_keys=%s)",
+        sunday_date, thu, fri, sat, date_keys,
+    )
 
     with conn.cursor() as cur:
         cur.execute(
@@ -239,19 +246,89 @@ def _fetch_thu_fri_sat_rows(sunday_date: date, conn) -> list[dict]:
         )
         raw_rows = cur.fetchall()
 
+    LOG.debug("Query recuperate %d righe totali dal DB", len(raw_rows))
+    if raw_rows:
+        for i, (title, gross, cinemas, dk, source_name) in enumerate(raw_rows[:5], 1):
+            LOG.debug(
+                "  [%d] %s | date_key=%s | source=%s | gross_eur=%s | cinemas=%s",
+                i, title, dk, source_name, gross, cinemas,
+            )
+        if len(raw_rows) > 5:
+            LOG.debug("  ... e altri %d record", len(raw_rows) - 5)
+
     # Deduplica: per ogni (date_key, title) preferisce CINETEL
     seen: dict[tuple[int, str], dict] = {}
     for title, gross, cinemas, dk, source_name in raw_rows:
         key = (dk, title.lower())
-        if key not in seen or source_name == "Cinetel":
+        if key not in seen:
+            LOG.debug(
+                "  NUOVO: %s (date_key=%s) da %s | gross=%s | cinemas=%s",
+                title, dk, source_name, gross, cinemas,
+            )
             seen[key] = {
                 "title":    title,
                 "gross":    gross,
                 "cinemas":  cinemas,
                 "row_date": dates_map.get(dk),
             }
+        elif source_name == "Cinetel":
+            old_source = "unknown"
+            # Ricostruisci la source precedente (difficile without extra tracking, skip per ora)
+            LOG.debug(
+                "  AGGIORNA: %s (date_key=%s) da %s (migliore) | gross=%s | cinemas=%s",
+                title, dk, source_name, gross, cinemas,
+            )
+            seen[key] = {
+                "title":    title,
+                "gross":    gross,
+                "cinemas":  cinemas,
+                "row_date": dates_map.get(dk),
+            }
+        else:
+            LOG.debug(
+                "  SCARTA: %s (date_key=%s) da %s (già presente Cinetel) | gross=%s",
+                title, dk, source_name, gross,
+            )
 
-    return list(seen.values())
+    result = list(seen.values())
+    LOG.info(
+        "Fetch thu/fri/sat completato: %d record unici dopo deduplicazione (da %d totali)",
+        len(result), len(raw_rows),
+    )
+    if result:
+        by_date: dict[date | None, list[str]] = {}
+        by_date_stats: dict[date | None, dict[str, int]] = {}
+        for rec in result:
+            d = rec.get("row_date")
+            if d not in by_date:
+                by_date[d] = []
+                by_date_stats[d] = {"total_gross": 0, "count": 0, "with_cinemas": 0}
+            by_date[d].append(rec["title"])
+            by_date_stats[d]["count"] += 1
+            by_date_stats[d]["total_gross"] += rec.get("gross") or 0
+            if rec.get("cinemas"):
+                by_date_stats[d]["with_cinemas"] += 1
+        
+        for d in sorted(by_date.keys(), reverse=True):
+            stats = by_date_stats[d]
+            titles_sample = ", ".join(by_date[d][:3]) + ("..." if len(by_date[d]) > 3 else "")
+            LOG.info(
+                "  %s: %d film | gross_tot=€%d | cinema_count=%d/%d | film: %s",
+                d, 
+                stats["count"],
+                stats["total_gross"],
+                stats["with_cinemas"],
+                stats["count"],
+                titles_sample,
+            )
+            # Mostra dettagli per i primi film di cada data
+            for i, rec in enumerate([r for r in result if r.get("row_date") == d][:3], 1):
+                LOG.debug(
+                    "    [%d] %s | gross=€%s | cinemas=%s",
+                    i, rec["title"], rec.get("gross"), rec.get("cinemas"),
+                )
+
+    return result
 
 
 # ---------------------------------------------------------------------------
@@ -362,6 +439,23 @@ def scrape_sunday_fallback(
     # Recupera Thu+Fri+Sat dal DB
     thu_fri_sat_rows = _fetch_thu_fri_sat_rows(sunday_date, conn)
     LOG.info("  Righe feriali recuperate dal DB: %d", len(thu_fri_sat_rows))
+
+    # Preflight: verifica che i 3 giorni feriali siano tutti presenti nel DB.
+    # Senza di essi il calcolo per differenza produrrebbe valori errati
+    # (il gross domenica risulterebbe uguale al totale weekend).
+    thu = _prev_thursday(sunday_date)
+    fri = thu + timedelta(days=1)
+    sat = sunday_date - timedelta(days=1)
+    dates_with_data = {rec["row_date"] for rec in thu_fri_sat_rows}
+    missing = [d for d in (thu, fri, sat) if d not in dates_with_data]
+    if missing:
+        missing_str = ", ".join(str(d) for d in missing)
+        raise RuntimeError(
+            f"Impossibile calcolare la domenica {sunday_date}: dati mancanti nel DB per "
+            f"{missing_str}. Esegui prima:\n"
+            + "\n".join(f"  boxoffice-int ingest-date --date {d}" for d in missing)
+            + "\n  boxoffice-int load --input <csv_path>"
+        )
 
     # Scarica e parsa l'articolo fine-settimana
     weekend_records: list[dict] = []
