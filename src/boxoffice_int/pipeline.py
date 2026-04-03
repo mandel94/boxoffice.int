@@ -64,6 +64,14 @@ def _build_parser() -> argparse.ArgumentParser:
     ingest.add_argument("--cinetel-url", type=str, default=None, dest="cinetel_url",
                         help="URL Cinetel di fallback se Cineguru non pubblica il bollettino")
 
+    # --- ingest-date: ingest raw da Cineguru per un singolo giorno ---
+    ingest_date = sub.add_parser("ingest-date", help="Ingestione raw da Cineguru per data singola")
+    ingest_date.add_argument("--date", type=date.fromisoformat, required=True,
+                             dest="target_date", help="Data YYYY-MM-DD")
+    ingest_date.add_argument("--delay", type=float, default=2.0, help="Delay richieste (secondi)")
+    ingest_date.add_argument("--cinetel-url", type=str, default=None, dest="cinetel_url",
+                             help="URL Cinetel di fallback se Cineguru non pubblica il bollettino")
+
     enrich = sub.add_parser("enrich", help="Arricchimento metadati TMDB")
     enrich.add_argument("--input", type=Path, required=True, help="CSV raw box office")
 
@@ -155,6 +163,57 @@ def main() -> None:
                 from .warehouse.loader import get_connection, log_cinetel_fallback
                 _conn = get_connection()
                 log_cinetel_fallback(start, _conn)
+                _conn.close()
+            except Exception as _log_exc:
+                log.warning("Impossibile scrivere cinetel_fallback_log: %s", _log_exc)
+        return
+
+    if args.command == "ingest-date":
+        log = logging.getLogger(__name__)
+        target_date = args.target_date
+        day_of_week = target_date.weekday()  # 0=Mon, 6=Sun
+        
+        # Handle weekends (Sat=5, Sun=6)
+        if day_of_week == 5:  # Saturday
+            next_sunday = target_date + timedelta(days=1)
+            print(f"{target_date} è un sabato — i dati del fine-settimana si estraggono dalla domenica.")
+            print(f"Esegui: boxoffice-int ingest-date --date {next_sunday}")
+            return
+        
+        if day_of_week == 6:  # Sunday
+            # Use sunday-fallback logic for weekend data
+            from .domain.box_office_raw.sunday_fallback import scrape_sunday_fallback
+            from .warehouse.loader import get_connection
+            conn = get_connection()
+            try:
+                path = scrape_sunday_fallback(
+                    sunday_date=target_date,
+                    conn=conn,
+                    delay=args.delay,
+                )
+            finally:
+                conn.close()
+            if path is None:
+                print(f"Dati Cinetel già presenti per domenica {target_date} — nessuna azione.")
+            else:
+                print(f"Raw dataset (domenica) creato: {path}")
+            return
+        
+        # Monday-Friday: use Cineguru daily scrape
+        try:
+            path = scrape_cineguru(start=target_date, end=target_date, delay=args.delay)
+            print(f"Raw dataset creato: {path}")
+        except RuntimeError as exc:
+            if args.cinetel_url is None:
+                raise
+            log.warning("Cineguru non disponibile (%s) — fallback su Cinetel: %s", exc, args.cinetel_url)
+            path = scrape_cinetel(target_date=target_date, url=args.cinetel_url)
+            print(f"Raw dataset creato (fallback Cinetel): {path}")
+            # Registra il giorno nel fallback log così può essere backfillato in seguito
+            try:
+                from .warehouse.loader import get_connection, log_cinetel_fallback
+                _conn = get_connection()
+                log_cinetel_fallback(target_date, _conn)
                 _conn.close()
             except Exception as _log_exc:
                 log.warning("Impossibile scrivere cinetel_fallback_log: %s", _log_exc)
