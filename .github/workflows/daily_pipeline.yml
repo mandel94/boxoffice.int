@@ -38,8 +38,8 @@ jobs:
           echo "yesterday=$YESTERDAY" >> $GITHUB_OUTPUT
           echo "raw_path=data/raw/box_office_raw/cineguru_${YESTERDAY}_${YESTERDAY}.csv" >> $GITHUB_OUTPUT
 
-      - name: Ingest - Cineguru
-        run: boxoffice-int ingest --yesterday
+      - name: Ingest - Cineguru (single date)
+        run: boxoffice-int ingest-date --date "${{ steps.date.outputs.yesterday }}"
 
       - name: Load to Neon
         run: boxoffice-int load --input "${{ steps.date.outputs.raw_path }}"
