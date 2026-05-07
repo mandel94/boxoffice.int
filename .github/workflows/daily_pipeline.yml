@@ -1,9 +1,9 @@
 name: Daily Box Office Pipeline
 
 on:
-  schedule:
-    - cron: "0 23 * * *"  # ogni giorno alle 23:00 UTC = mezzanotte ora italiana
-  workflow_dispatch:        # trigger manuale per backfill o test
+  workflow_dispatch:        # trigger manuale — schedule disabilitato
+  # schedule:
+  #   - cron: "0 23 * * *"  # ogni giorno alle 23:00 UTC = mezzanotte ora italiana
 
 jobs:
   pipeline:

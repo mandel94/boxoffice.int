@@ -468,6 +468,93 @@ def update_film_distributor(
 
 
 # ---------------------------------------------------------------------------
+# Cinetel raw CSV loader
+# ---------------------------------------------------------------------------
+
+def load_cinetel_raw(csv_path: Path) -> int:
+    """
+    Load a Cinetel raw CSV directly into ``fact_box_office_daily``.
+
+    I CSV prodotti da ``scrape_cinetel`` usano già i nomi canonici del contratto:
+      gross_eur, admissions, total_gross_eur.
+    I campi non forniti da Cinetel vengono impostati a NULL:
+      cinemas         → NULL
+      avg_per_cinema  → NULL
+
+    Il campo ``source`` deve essere presente e uguale a 'CINETEL'.
+    L'inserimento è idempotente: ``ON CONFLICT (date_key, film_key, source_key) DO NOTHING``.
+
+    Returns
+    -------
+    int
+        Number of rows actually inserted.
+    """
+    csv_path = Path(csv_path)
+    if not csv_path.exists():
+        raise FileNotFoundError(f"CSV not found: {csv_path}")
+
+    df = pd.read_csv(csv_path)
+
+    # Validate required columns (solo i campi direttamente scrapabili da Cinetel)
+    required = {"date", "rank", "title", "gross_eur", "source"}
+    missing = required - set(df.columns)
+    if missing:
+        raise ValueError(f"Cinetel CSV manca delle colonne: {missing}")
+
+    conn = get_connection()
+    try:
+        with conn.cursor() as cur:
+            film_cache = _fetch_active_films(cur)
+            inserted_count = 0
+
+            for _, row in df.iterrows():
+                row_date: date = pd.Timestamp(row["date"]).date()
+                dk = _date_key(row_date)
+
+                source_key = _resolve_source_key(str(row["source"]), cur)
+
+                film_key = _resolve_film_key(
+                    title=str(row["title"]),
+                    cache=film_cache,
+                    cur=cur,
+                    valid_from=row_date,
+                )
+
+                gross_eur = None if pd.isna(row.get("gross_eur")) else int(row["gross_eur"])
+                admissions = None if pd.isna(row.get("admissions")) else int(row["admissions"])
+                total_gross_eur = None if pd.isna(row.get("total_gross_eur")) else int(row["total_gross_eur"])
+
+                cur.execute(
+                    """
+                    INSERT INTO fact_box_office_daily (
+                        date_key, film_key, source_key,
+                        rank, gross_eur, admissions, cinemas,
+                        avg_per_cinema_eur, total_gross_eur
+                    )
+                    VALUES (%s, %s, %s, %s, %s, %s, NULL, NULL, %s)
+                    ON CONFLICT (date_key, film_key, source_key) DO NOTHING
+                    """,
+                    (dk, film_key, source_key, int(row["rank"]),
+                     gross_eur, admissions, total_gross_eur),
+                )
+                if cur.rowcount:
+                    inserted_count += 1
+
+        conn.commit()
+        LOG.info(
+            "fact_box_office_daily (Cinetel): %d/%d rows inserted from %s",
+            inserted_count, len(df), csv_path.name,
+        )
+        return inserted_count
+
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+
+# ---------------------------------------------------------------------------
 # Cinetel fallback log
 # ---------------------------------------------------------------------------
 

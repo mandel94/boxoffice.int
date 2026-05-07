@@ -92,6 +92,10 @@ def _build_parser() -> argparse.ArgumentParser:
     load.add_argument("--source-key", type=int, default=1,
                       help="FK dim_source fallback quando il CSV non ha colonna source (default: 1=Cineguru)")
 
+    # --- load-cinetel: ingest Cinetel CSV into Neon star schema ---
+    load_cinetel = sub.add_parser("load-cinetel", help="Carica CSV Cinetel nel DB Neon (colonne native Cinetel)")
+    load_cinetel.add_argument("--input", type=Path, required=True, help="CSV raw Cinetel da caricare")
+
     # --- enrich-db: TMDB enrichment of dim_film rows in Neon ---
     enrich_db = sub.add_parser("enrich-db", help="Arricchisce dim_film con dati TMDB (solo righe senza tmdb_id)")
     enrich_db.add_argument("--delay", type=float, default=1.0,
@@ -242,6 +246,12 @@ def main() -> None:
         from .warehouse.loader import load_box_office_raw  # optional dep
         n = load_box_office_raw(csv_path=args.input, source_key=args.source_key)
         print(f"fact_box_office_daily: {n} righe inserite da {args.input.name}")
+        return
+
+    if args.command == "load-cinetel":
+        from .warehouse.loader import load_cinetel_raw  # optional dep
+        n = load_cinetel_raw(csv_path=args.input)
+        print(f"fact_box_office_daily (Cinetel): {n} righe inserite da {args.input.name}")
         return
 
     if args.command == "enrich-db":

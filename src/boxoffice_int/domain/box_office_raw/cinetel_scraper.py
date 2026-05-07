@@ -342,6 +342,13 @@ def scrape_cinetel(
     dataframe = dataframe.sort_values("rank").reset_index(drop=True)
     dataframe = dataframe[dataframe["rank"].between(1, 10)]
 
+    # Rinomina alle colonne canoniche del contratto
+    dataframe = dataframe.rename(columns={
+        "gross":            "gross_eur",
+        "attendance":       "admissions",
+        "gross_total":      "total_gross_eur",
+    })
+
     output_dir = DATA_RAW / "box_office_raw"
     output_dir.mkdir(parents=True, exist_ok=True)
     if output_path is None:

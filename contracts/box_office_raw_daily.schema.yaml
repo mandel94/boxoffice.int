@@ -43,29 +43,30 @@ schema:
 
     - name: gross_eur
       type: integer
-      description: Incasso giornaliero in euro
+      nullable: false
+      description: Incasso giornaliero in euro (fornito direttamente da Cinetel e Cineguru)
       constraints:
         minimum: 0
 
     - name: admissions
       type: integer
       nullable: true
-      description: Numero di spettatori
+      description: Numero di spettatori (fornito da Cinetel; nullable per compatibilità Cineguru)
 
     - name: cinemas
       type: integer
       nullable: true
-      description: Numero di cinema in programmazione
+      description: Numero di cinema in programmazione (solo Cineguru; NULL per record Cinetel)
 
     - name: avg_per_cinema_eur
       type: integer
       nullable: true
-      description: Incasso medio per cinema in euro
+      description: Incasso medio per cinema in euro (solo Cineguru; NULL per record Cinetel)
 
     - name: total_gross_eur
       type: integer
       nullable: true
-      description: Incasso cumulato totale del film in euro
+      description: Incasso cumulato totale del film in euro (fornito da Cinetel; nullable per compatibilità)
 
     - name: source
       type: string
