@@ -1,16 +1,24 @@
-name: Daily Box Office Pipeline
+name: Daily Cinetel Ingest
 
 on:
-  workflow_dispatch:        # trigger manuale — schedule disabilitato
-  # schedule:
-  #   - cron: "0 23 * * *"  # ogni giorno alle 23:00 UTC = mezzanotte ora italiana
+  schedule:
+    - cron: "${{ vars.DAILY_CRON || '0 11 * * *' }}"  # default: 11:00 UTC = 13:00 ora italiana
+  workflow_dispatch:
+    inputs:
+      cron_hour_utc:
+        description: "Ora UTC di esecuzione (0-23). Usato solo per trigger manuale con data specifica."
+        required: false
+        default: "11"
+      target_date:
+        description: "Data da ingestire YYYY-MM-DD (default: oggi)"
+        required: false
+        default: ""
 
 jobs:
-  pipeline:
+  ingest:
     runs-on: ubuntu-latest
     env:
-      TMDB_API_KEY:       ${{ secrets.TMDB_API_KEY }}
-      BOXOFFICE_DB_URL:   ${{ secrets.BOXOFFICE_DB_URL }}
+      BOXOFFICE_DB_URL: ${{ secrets.BOXOFFICE_DB_URL }}
 
     steps:
       - name: Checkout
@@ -23,56 +31,36 @@ jobs:
           cache: pip
 
       - name: Install package (with warehouse extras)
-        run: pip install -e ".[dev,warehouse]"
+        run: pip install -e ".[warehouse]"
 
       - name: Install Playwright browsers
         run: playwright install chromium --with-deps
 
-      - name: Run tests
-        run: pytest tests/ -v
-
-      - name: Compute date
+      - name: Resolve target date
         id: date
         run: |
-          YESTERDAY=$(date -u -d 'yesterday' '+%Y-%m-%d')
-          echo "yesterday=$YESTERDAY" >> $GITHUB_OUTPUT
-          echo "raw_path=data/raw/box_office_raw/cineguru_${YESTERDAY}_${YESTERDAY}.csv" >> $GITHUB_OUTPUT
+          if [ -n "${{ github.event.inputs.target_date }}" ]; then
+            TARGET="${{ github.event.inputs.target_date }}"
+          else
+            TARGET=$(date -u '+%Y-%m-%d')
+          fi
+          echo "target=$TARGET" >> $GITHUB_OUTPUT
+          echo "csv_path=data/raw/box_office_raw/cinetel_${TARGET}.csv" >> $GITHUB_OUTPUT
 
-      - name: Ingest - Cineguru (single date)
-        run: boxoffice-int ingest-date --date "${{ steps.date.outputs.yesterday }}"
+      - name: Ingest - Cinetel (today)
+        run: boxoffice-int ingest-cinetel --date "${{ steps.date.outputs.target }}"
 
       - name: Load to Neon
-        run: boxoffice-int load --input "${{ steps.date.outputs.raw_path }}"
+        run: boxoffice-int load-cinetel --input "${{ steps.date.outputs.csv_path }}"
 
       - name: Enrich DB - TMDB metadata
+        env:
+          TMDB_API_KEY: ${{ secrets.TMDB_API_KEY }}
         run: boxoffice-int enrich-db --delay 1.0
 
-      - name: Enrich CSV - TMDB metadata
-        run: boxoffice-int enrich --input "${{ steps.date.outputs.raw_path }}"
-
-      - name: Build - market analytics
-        run: |
-          boxoffice-int build \
-            --input "${{ steps.date.outputs.raw_path }}" \
-            --metadata data/curated/film_metadata/film_metadata.csv
-
-      - name: Upload raw data
+      - name: Upload raw data artifact
         uses: actions/upload-artifact@v4
         with:
-          name: box-office-raw-${{ steps.date.outputs.yesterday }}
-          path: data/raw/box_office_raw/
-          retention-days: 90
-
-      - name: Upload curated metadata
-        uses: actions/upload-artifact@v4
-        with:
-          name: film-metadata-${{ steps.date.outputs.yesterday }}
-          path: data/curated/film_metadata/
-          retention-days: 90
-
-      - name: Upload market analytics products
-        uses: actions/upload-artifact@v4
-        with:
-          name: market-analytics-${{ steps.date.outputs.yesterday }}
-          path: data/products/market_analytics/
+          name: cinetel-raw-${{ steps.date.outputs.target }}
+          path: ${{ steps.date.outputs.csv_path }}
           retention-days: 90

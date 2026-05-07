@@ -102,11 +102,12 @@ def _build_parser() -> argparse.ArgumentParser:
                            help="Pausa tra chiamate TMDB (secondi, default: 1.0)")
 
     # --- ingest-cinetel: scarica bollettino giornaliero Cinetel ---
-    ingest_cinetel = sub.add_parser("ingest-cinetel", help="Ingestione raw da Cinetel (bollettino giornaliero)")
-    ingest_cinetel.add_argument("--date",  type=date.fromisoformat, required=True,
-                                dest="target_date", help="Data del bollettino YYYY-MM-DD")
-    ingest_cinetel.add_argument("--url",   type=str, required=True,
-                                help="URL completo della pagina Cinetel con la datatable")
+    ingest_cinetel = sub.add_parser("ingest-cinetel", help="Ingestione raw da Cinetel (bollettino del giorno corrente)")
+    ingest_cinetel.add_argument("--date", type=date.fromisoformat, default=None,
+                                dest="target_date",
+                                help="Data del bollettino YYYY-MM-DD (default: oggi)")
+    ingest_cinetel.add_argument("--url", type=str, default="https://www.cinetel.it/homepage",
+                                help="URL pagina Cinetel (default: https://www.cinetel.it/homepage)")
 
     # --- sunday-fallback: calcola domenica da articolo fine-settimana Cineguru ---
     sunday_fb = sub.add_parser("sunday-fallback",
@@ -261,7 +262,8 @@ def main() -> None:
         return
 
     if args.command == "ingest-cinetel":
-        path = scrape_cinetel(target_date=args.target_date, url=args.url)
+        target_date = args.target_date if args.target_date is not None else date.today()
+        path = scrape_cinetel(target_date=target_date, url=args.url)
         print(f"Raw dataset Cinetel creato: {path}")
         return
 
