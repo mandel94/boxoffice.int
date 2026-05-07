@@ -1,0 +1,67 @@
+name: Cineguru Manual Ingest
+
+on:
+  workflow_dispatch:
+    inputs:
+      target_date:
+        description: "Data da ingestire YYYY-MM-DD"
+        required: true
+      cinetel_fallback_url:
+        description: "URL Cinetel di fallback (opzionale, solo se Cineguru non disponibile)"
+        required: false
+        default: ""
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    env:
+      TMDB_API_KEY:     ${{ secrets.TMDB_API_KEY }}
+      BOXOFFICE_DB_URL: ${{ secrets.BOXOFFICE_DB_URL }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+
+      - name: Install package (with warehouse extras)
+        run: pip install -e ".[warehouse]"
+
+      - name: Install Playwright browsers
+        run: playwright install chromium --with-deps
+
+      - name: Ingest - Cineguru
+        run: |
+          ARGS="--date ${{ github.event.inputs.target_date }}"
+          if [ -n "${{ github.event.inputs.cinetel_fallback_url }}" ]; then
+            ARGS="$ARGS --cinetel-url ${{ github.event.inputs.cinetel_fallback_url }}"
+          fi
+          boxoffice-int ingest-date $ARGS
+
+      - name: Resolve CSV path
+        id: csv
+        run: |
+          DATE="${{ github.event.inputs.target_date }}"
+          DOW=$(date -d "$DATE" '+%u')  # 1=Mon … 7=Sun
+          if [ "$DOW" -eq 7 ]; then
+            echo "path=data/raw/box_office_raw/cineguru_sunday_${DATE}.csv" >> $GITHUB_OUTPUT
+          else
+            echo "path=data/raw/box_office_raw/cineguru_${DATE}_${DATE}.csv" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Load to Neon
+        run: boxoffice-int load --input "${{ steps.csv.outputs.path }}"
+
+      - name: Enrich DB - TMDB metadata
+        run: boxoffice-int enrich-db --delay 1.0
+
+      - name: Upload raw data artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: cineguru-raw-${{ github.event.inputs.target_date }}
+          path: ${{ steps.csv.outputs.path }}
+          retention-days: 90
